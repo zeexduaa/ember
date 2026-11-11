@@ -416,3 +416,7 @@ def test_interrupting_a_running_program():
     with pytest.raises(RuntimeFailure) as exc:
         vm.run_main(compiled.proto)
     assert exc.value.message == "interrupted"
+
+
+def test_sum_of_an_empty_float_list_is_a_float():
+    assert run("let xs: List[Float] = []\nprint(xs.sum(), [1.5, 2.0].sum(), [1, 2].sum())") == "0.0 3.5 3\n"

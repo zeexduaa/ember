@@ -969,6 +969,8 @@ class Checker:
         expr.extra = callee.name
         callee.type = sig.type
         result = self.check_args(expr, sig.type, f".{callee.name}()")
+        if callee.name == "sum" and isinstance(receiver, ListT) and prune(receiver.elem) == FLOAT:
+            expr.extra = "fsum"   # an empty List[Float] sums to 0.0, not the Int 0
         if sig.after is not None:
             problem = sig.after(receiver)
             if problem:

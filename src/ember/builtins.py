@@ -443,6 +443,7 @@ IMPLS: dict[str, dict[str, Impl]] = {
         "sorted": lambda vm, xs: sorted(xs),
         "sort": lambda vm, xs: xs.sort(),
         "sum": _sum,
+        "fsum": lambda vm, xs: float(sum(xs, 0.0)),
         "min": _min_max_list("min", min),
         "max": _min_max_list("max", max),
         "join": lambda vm, xs, sep: sep.join(xs),
