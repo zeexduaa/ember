@@ -269,6 +269,37 @@ def _int_pow(vm: Any, a: int, b: int) -> int:
     return check_int(a ** b)
 
 
+INT_BITS = 64
+_INT_MIN, _INT_MAX = -(2 ** 63), 2 ** 63 - 1
+_EXACT = {"add": lambda a, b: a + b, "sub": lambda a, b: a - b, "mul": lambda a, b: a * b}
+
+
+def _wrap(n: int) -> int:
+    """Two's complement wrap-around to 64 bits, as C, Go and Rust's wrapping_* do."""
+    n &= (1 << INT_BITS) - 1
+    return n - (1 << INT_BITS) if n > _INT_MAX else n
+
+
+def _checked(op: str) -> Impl:
+    def impl(vm: Any, a: int, b: int) -> int | None:
+        if op == "div":
+            if b == 0 or (a == _INT_MIN and b == -1):
+                return None
+            q = abs(a) // abs(b)
+            return q if (a >= 0) == (b >= 0) else -q
+        r = _EXACT[op](a, b)
+        return r if _INT_MIN <= r <= _INT_MAX else None
+    return impl
+
+
+def _wrapping(op: str) -> Impl:
+    return lambda vm, a, b: _wrap(_EXACT[op](a, b))
+
+
+def _saturating(op: str) -> Impl:
+    return lambda vm, a, b: max(_INT_MIN, min(_INT_MAX, _EXACT[op](a, b)))
+
+
 def _map_get_or(vm: Any, m: dict, k: Any, default: Any) -> Any:
     return m.get(k, default)
 
@@ -409,9 +440,17 @@ def _map_methods(K: Type, V: Type) -> dict[str, tuple[Callable[[], MethodSig], I
 
 def _int_methods() -> dict[str, tuple[Callable[[], MethodSig], Impl]]:
     m = IMPLS["int"]
-    return {"abs": (lambda: MethodSig(FnT((), INT)), m["abs"]),
-            "pow": (lambda: MethodSig(FnT((INT,), INT)), m["pow"]),
-            "to_float": (lambda: MethodSig(FnT((), FLOAT)), m["to_float"])}
+    table: dict[str, tuple[Callable[[], MethodSig], Impl]] = {
+        "abs": (lambda: MethodSig(FnT((), INT)), m["abs"]),
+        "pow": (lambda: MethodSig(FnT((INT,), INT)), m["pow"]),
+        "to_float": (lambda: MethodSig(FnT((), FLOAT)), m["to_float"]),
+    }
+    for op in ("add", "sub", "mul"):
+        table[f"wrapping_{op}"] = (lambda: MethodSig(FnT((INT,), INT)), m[f"wrapping_{op}"])
+        table[f"saturating_{op}"] = (lambda: MethodSig(FnT((INT,), INT)), m[f"saturating_{op}"])
+    for op in ("add", "sub", "mul", "div"):
+        table[f"checked_{op}"] = (lambda: MethodSig(FnT((INT,), OptionT(INT))), m[f"checked_{op}"])
+    return table
 
 
 def _float_methods() -> dict[str, tuple[Callable[[], MethodSig], Impl]]:
@@ -473,7 +512,10 @@ IMPLS: dict[str, dict[str, Impl]] = {
         "remove": lambda vm, m, k: m.pop(k, None), "keys": lambda vm, m: list(m.keys()),
         "values": lambda vm, m: list(m.values()), "copy": lambda vm, m: dict(m), "clear": lambda vm, m: m.clear(),
     },
-    "int": {"abs": lambda vm, n: check_int(abs(n)), "pow": _int_pow, "to_float": lambda vm, n: float(n)},
+    "int": {"abs": lambda vm, n: check_int(abs(n)), "pow": _int_pow, "to_float": lambda vm, n: float(n),
+            **{f"wrapping_{op}": _wrapping(op) for op in ("add", "sub", "mul")},
+            **{f"saturating_{op}": _saturating(op) for op in ("add", "sub", "mul")},
+            **{f"checked_{op}": _checked(op) for op in ("add", "sub", "mul", "div")}},
     "float": {"abs": lambda vm, x: abs(x), "floor": lambda vm, x: _int(vm, math.floor(x)) if math.isfinite(x) else _int(vm, x),
               "ceil": lambda vm, x: _int(vm, math.ceil(x)) if math.isfinite(x) else _int(vm, x),
               "round": _round, "is_nan": lambda vm, x: math.isnan(x)},

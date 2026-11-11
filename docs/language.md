@@ -216,7 +216,7 @@ let b = ages.get("bob") ?? 0     # ...so use get() when it might be missing
 
 **String methods:** `len()` (in characters), `is_empty()`, `upper()`, `lower()`, `trim()`, `split(sep)`, `lines()`, `chars()`, `contains(s)`, `starts_with(s)`, `ends_with(s)`, `index_of(s) -> Int?`, `replace(old, new)`, `repeat(n)`, `slice(start, end)`. `s[i]` is the character at `i`. Strings can't be changed in place; build new ones.
 
-**Number methods:** `Int`: `abs()`, `pow(n)`, `to_float()`. `Float`: `abs()`, `floor()`, `ceil()`, `round()` (to `Int`), `is_nan()`.
+**Number methods:** `Int`: `abs()`, `pow(n)`, `to_float()`, and for when overflow shouldn't stop the program: `wrapping_add/sub/mul(n)` (wrap around 64 bits, like C), `saturating_add/sub/mul(n)` (stop at the largest or smallest Int), `checked_add/sub/mul/div(n) -> Int?` (nil on overflow or division by zero). `Float`: `abs()`, `floor()`, `ceil()`, `round()` (to `Int`), `is_nan()`.
 
 ## Structs and methods
 

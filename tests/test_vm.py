@@ -430,3 +430,14 @@ def test_interrupting_a_running_program():
 
 def test_sum_of_an_empty_float_list_is_a_float():
     assert run("let xs: List[Float] = []\nprint(xs.sum(), [1.5, 2.0].sum(), [1, 2].sum())") == "0.0 3.5 3\n"
+
+
+def test_wrapping_checked_and_saturating_arithmetic():
+    text = """
+let max = 9223372036854775807
+let min = -max - 1
+print(max.wrapping_add(1) == min, min.wrapping_sub(1) == max, max.wrapping_mul(2))
+print(max.checked_add(1), 5.checked_add(1), 7.checked_div(0), min.checked_div(-1), (-7).checked_div(2))
+print(max.saturating_add(10) == max, min.saturating_sub(1) == min, 3.saturating_mul(4))
+"""
+    assert lines(text) == ["true true -2", "nil 6 nil nil -3", "true true 12"]
