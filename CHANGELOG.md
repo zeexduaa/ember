@@ -14,6 +14,10 @@ The first version, so everything is new:
 - `ember run`, `check`, `dis`, `eval` and a REPL.
 - Nine example programs, run in CI against their expected output.
 
+### Added since
+
+- Type aliases: `type Grid = List[List[Bool]]`.
+
 ### Fixed before release
 
 - Printing or comparing a struct that contains itself crashed; cycles now print as `...` and compare correctly.

@@ -116,3 +116,9 @@ def test_callbacks_into_another_module_use_its_globals(tmp_path):
     write(tmp_path / "counter.em", "var n = 0\npub fn bump(x: Int) -> Int {\n  n += 1\n  x + n\n}")
     main = write(tmp_path / "main.em", 'import "counter"\nlet n = 100\nprint([1, 1, 1].map(counter.bump), n)')
     assert run(main) == "[2, 3, 4] 100\n"
+
+
+def test_public_type_aliases_can_be_imported(tmp_path):
+    write(tmp_path / "grid.em", "pub type Grid = List[List[Int]]\npub fn make() -> Grid { [[1, 2], [3]] }")
+    main = write(tmp_path / "main.em", 'import "grid"\nlet g: grid.Grid = grid.make()\nprint(g.len(), g[0])')
+    assert run(main) == "2 [1, 2]\n"

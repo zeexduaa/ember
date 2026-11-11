@@ -266,3 +266,20 @@ def test_lambdas_take_their_return_type_from_the_context():
 
 def test_a_value_cant_contain_itself():
     assert "a value can't contain itself (its type would never end)" in errors("var xs = []\nxs.push(xs)")
+
+
+def test_type_aliases():
+    text = """
+type Grid = List[List[Bool]]
+type Scores = Map[Str, Score]
+type Score = Int
+struct Point { x: Float, y: Float }
+type P = Point
+let g: Grid = [[true]]
+let s: Scores = {"a": 1}
+let p = P { x: 1.0, y: 2.0 }
+let type = 1
+"""
+    assert [type_of(text, n) for n in ("g", "s", "p", "type")] == ["List[List[Bool]]", "Map[Str, Int]", "Point", "Int"]
+    assert error("type A = B\ntype B = A") == "type alias 'A' refers to itself"
+    assert error("type G = List[Int]\nlet g = G") == "'G' is a type, not a value"

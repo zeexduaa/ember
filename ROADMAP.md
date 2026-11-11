@@ -10,7 +10,7 @@ Each item is (or will be) a GitHub issue. Please comment there before starting a
 - [ ] **Generic structs and enums**: `struct Pair[A, B] { first: A, second: B }`, `enum Tree[T] { Leaf, Node(Tree[T], T, Tree[T]) }`, with inference at construction. (XL)
 - [ ] **Traits / interfaces**: `trait Show { fn show(self) -> Str }`, `impl Show for Point`, and bounds on type parameters (`fn max_of[T: Ord](xs: List[T])`), so generic code can use `<`, `+` or methods. (XL)
 - [ ] **Flow-sensitive nil checks**: after `if x != nil { ... }` or an early `return` on nil, treat `x` as non-optional, as well as `if let`. (M)
-- [ ] **Type aliases**: `type Grid = List[List[Bool]]`. (S)
+- [x] **Type aliases**: `type Grid = List[List[Bool]]`. (S)
 - [ ] **Range patterns and or-patterns**: `1..=9 => ...`, `"y" | "yes" => ...`, with exhaustiveness for Int ranges. (M)
 - [ ] **Struct patterns**: `Point { x: 0.0, y } => ...` in match. (M)
 - [ ] **Exhaustiveness for guards that are always true**: today a guarded arm never counts as covering. (S)

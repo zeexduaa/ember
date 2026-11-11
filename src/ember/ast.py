@@ -328,6 +328,14 @@ class EnumDecl(Stmt):
 
 
 @dataclass
+class TypeAlias(Stmt):
+    name: str
+    name_span: Span
+    target: TypeExpr
+    public: bool = False
+
+
+@dataclass
 class ImplDecl(Stmt):
     type_name: str
     name_span: Span

@@ -151,8 +151,8 @@ class Parser:
                 raise ParseError("'pub' only goes on top-level declarations", tok.span)
             self.advance()
             public = True
-            if not self.at("fn", "struct", "enum", "let", "var"):
-                raise ParseError(f"expected fn, struct, enum, let or var after 'pub', found {self.describe(self.tok)}",
+            if not self.at("fn", "struct", "enum", "let", "var") and not self._at_type_alias():
+                raise ParseError(f"expected fn, struct, enum, type, let or var after 'pub', found {self.describe(self.tok)}",
                                  self.tok.span)
             tok = self.tok
         kind = tok.kind
@@ -160,6 +160,8 @@ class Parser:
             return self.let_stmt(public)
         if kind == "fn" and self.peek().kind == "ident":
             return self.fn_decl(public)
+        if self._at_type_alias():
+            return self.type_alias(public, top_level)
         if kind == "struct":
             return self.struct_decl(public, top_level)
         if kind == "enum":
@@ -256,6 +258,20 @@ class Parser:
                 break
         self.expect(")", "')' after the parameters")
         return params, has_self
+
+    def _at_type_alias(self) -> bool:
+        """`type Name = ...`. 'type' isn't a keyword, so it stays usable as an ordinary name."""
+        return (self.tok.kind == "ident" and self.tok.text == "type" and self.peek().kind == "ident"
+                and self.peek(2).kind == "=")
+
+    def type_alias(self, public: bool, top_level: bool) -> A.TypeAlias:
+        keyword = self.advance()
+        if not top_level:
+            raise ParseError("type aliases are declared at the top level", keyword.span)
+        name = self.advance()
+        self.expect("=")
+        target = self.type_expr()
+        return A.TypeAlias(keyword.span.to(target.span), name.text, name.span, target, public)
 
     def struct_decl(self, public: bool, top_level: bool) -> A.StructDecl:
         keyword = self.advance()

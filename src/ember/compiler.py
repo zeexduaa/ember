@@ -210,7 +210,7 @@ class Compiler:
                     fc.emit(Op.CLOSURE, fc.constant(proto))
                     fc.emit(Op.DEFINE_METHOD, fc.constant(method_key(target, method.name)))
         body = [s for s in program.stmts
-                if not isinstance(s, (A.FnDecl, A.ImplDecl, A.StructDecl, A.EnumDecl, A.Import))]
+                if not isinstance(s, (A.FnDecl, A.ImplDecl, A.StructDecl, A.EnumDecl, A.Import, A.TypeAlias))]
         for i, stmt in enumerate(body):
             if return_last and i == len(body) - 1 and isinstance(stmt, A.ExprStmt) and \
                     not self._valueless_if(stmt.expr) and str(prune(stmt.expr.type)) not in ("Nil", "Never"):

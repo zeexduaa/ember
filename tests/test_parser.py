@@ -143,7 +143,7 @@ def test_several_errors_are_reported():
     ("match x { }", "a match needs at least one arm"),
     ("struct S { a: Int, a: Int }", "two fields are named 'a'"),
     ("let x: = 1", "expected a type, found '='"),
-    ("pub x = 1", "expected fn, struct, enum, let or var after 'pub', found name 'x'"),
+    ("pub x = 1", "expected fn, struct, enum, type, let or var after 'pub', found name 'x'"),
 ])
 def test_error_messages(text, message):
     assert errors_of(parse, text)[0] == message

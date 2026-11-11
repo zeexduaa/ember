@@ -168,7 +168,7 @@ class Checker:
                 elif isinstance(stmt, A.ImplDecl):
                     for method in stmt.methods:
                         deferred.append((method, self.globals))
-                elif isinstance(stmt, (A.StructDecl, A.EnumDecl, A.Import)):
+                elif isinstance(stmt, (A.StructDecl, A.EnumDecl, A.Import, A.TypeAlias)):
                     continue
                 else:
                     self.check_stmt(stmt)
@@ -192,7 +192,19 @@ class Checker:
             if isinstance(stmt, A.Import):
                 self.declare_import(stmt)
         for stmt in stmts:
-            if isinstance(stmt, (A.StructDecl, A.EnumDecl)):
+            if isinstance(stmt, A.TypeAlias):
+                if self.globals.names.get(stmt.name) and self.globals.names[stmt.name].kind != "builtin" \
+                        and not self.repl:
+                    self.error(f"'{stmt.name}' is already defined", stmt.name_span)
+                    continue
+                if not stmt.name[0].isupper():
+                    self.error(f"type names start with a capital letter: {stmt.name[0].upper() + stmt.name[1:]}",
+                               stmt.name_span)
+                # Resolved on first use (aliases may refer to types and aliases declared later).
+                self.globals.names[stmt.name] = Binding(stmt.name, NIL, "alias", stmt.name_span, global_=True,
+                                                        extra=None, public=stmt.public, type_params=[])
+                self.globals.names[stmt.name].decl = stmt  # type: ignore[attr-defined]
+            elif isinstance(stmt, (A.StructDecl, A.EnumDecl)):
                 if self.globals.names.get(stmt.name) and self.globals.names[stmt.name].kind != "builtin" \
                         and not self.repl:
                     self.error(f"'{stmt.name}' is already defined", stmt.name_span)
@@ -206,7 +218,9 @@ class Checker:
                                                         global_=True, extra=t, public=stmt.public)
         for stmt in stmts:
             try:
-                if isinstance(stmt, A.StructDecl):
+                if isinstance(stmt, A.TypeAlias) and self.globals.names.get(stmt.name) is not None:
+                    self.resolve_alias(self.globals.names[stmt.name])
+                elif isinstance(stmt, A.StructDecl):
                     t = self.globals.names[stmt.name].extra
                     if isinstance(t, StructT):
                         for f in stmt.fields:
@@ -218,6 +232,22 @@ class Checker:
                             t.variants.append((v.name, tuple(self.resolve_type(f) for f in v.fields)))
             except CheckError:
                 pass
+
+    def resolve_alias(self, binding: Binding) -> Type:
+        if binding.extra is not None:
+            return binding.extra
+        decl: A.TypeAlias = binding.decl  # type: ignore[attr-defined]
+        if getattr(binding, "resolving", False):
+            binding.extra = TypeVar()
+            raise self.fail(f"type alias '{binding.name}' refers to itself", decl.name_span,
+                            notes=["use a struct or enum for recursive types"])
+        binding.resolving = True  # type: ignore[attr-defined]
+        try:
+            binding.extra = self.resolve_type(decl.target)
+        finally:
+            binding.resolving = False  # type: ignore[attr-defined]
+        binding.type = binding.extra
+        return binding.extra
 
     def declare_import(self, stmt: A.Import) -> None:
         if self.import_module is None:
@@ -354,14 +384,23 @@ class Checker:
             if binding.extra.broken:
                 raise CheckError()
             target = binding.extra.members.get(member)
+            if target is not None and target.kind == "alias":
+                binding.used = True
+                return target.extra
             if target is None or target.kind not in ("struct", "enum"):
                 raise self.fail(f"module {module_name} has no public type '{member}'", texpr.span)
             binding.used = True
             return target.extra
         binding = self.scope.lookup(name)
+        if binding is not None and binding.kind == "alias":
+            if args:
+                raise self.fail(f"{name} doesn't take type arguments (generic aliases aren't supported yet)",
+                                texpr.span)
+            binding.used = True
+            return self.resolve_alias(binding)
         if binding is None or binding.kind not in ("struct", "enum", "type_param"):
             known = [n for n in self.scope.all_names()
-                     if (b := self.scope.lookup(n)) and b.kind in ("struct", "enum", "type_param")]
+                     if (b := self.scope.lookup(n)) and b.kind in ("struct", "enum", "type_param", "alias")]
             close = difflib.get_close_matches(name, known + ["Int", "Float", "Bool", "Str", "List", "Map"], n=1)
             raise self.fail(f"unknown type '{name}'", texpr.span, [f"did you mean {close[0]}?"] if close else [])
         if args:
@@ -464,7 +503,7 @@ class Checker:
             # A nested function: usable from here on, including inside itself (recursion).
             self.declare_function(stmt, self.scope)
             self.check_function_body(stmt, self.scope)
-        elif isinstance(stmt, (A.StructDecl, A.EnumDecl, A.ImplDecl, A.Import)):
+        elif isinstance(stmt, (A.StructDecl, A.EnumDecl, A.ImplDecl, A.Import, A.TypeAlias)):
             self.error("this declaration belongs at the top level", stmt.span)
         else:  # pragma: no cover
             raise self.fail(f"unknown statement {type(stmt).__name__}", stmt.span)
@@ -738,7 +777,7 @@ class Checker:
             raise self.fail(f"'{expr.name}' is {what}, not a value", expr.span, [hint])
         if binding.kind == "module":
             raise self.fail(f"'{expr.name}' is a module; use one of its members, e.g. {expr.name}.something", expr.span)
-        if binding.kind == "type_param":
+        if binding.kind in ("type_param", "alias"):
             raise self.fail(f"'{expr.name}' is a type, not a value", expr.span)
         if binding.kind == "builtin" and binding.extra.special:
             raise self.fail(f"'{expr.name}' must be called directly: {expr.name}(...)", expr.span)
@@ -776,6 +815,9 @@ class Checker:
     def type_from_path(self, path: A.Expr) -> Type | None:
         if isinstance(path, A.Name):
             binding = self.scope.lookup(path.name)
+            if binding is not None and binding.kind == "alias":
+                binding.used = True
+                return self.resolve_alias(binding)
             if binding is not None and binding.kind in ("struct", "enum"):
                 binding.used = True
                 path.binding = binding
@@ -993,6 +1035,10 @@ class Checker:
         """If ``target`` names a struct or enum (Point, geo.Shape), returns it."""
         if isinstance(target, A.Name):
             binding = self.scope.lookup(target.name)
+            if binding is not None and binding.kind == "alias":
+                t = self.resolve_alias(binding)
+                binding.used = True
+                return t if isinstance(t, (StructT, EnumT)) else None
             if binding is not None and binding.kind in ("struct", "enum"):
                 binding.used = True
                 target.binding = binding

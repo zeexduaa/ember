@@ -58,6 +58,17 @@ Names are letters, digits and `_`. By convention, values and functions are `snak
 | `Range` | `0..10`, `1..=10` | for loops; `..` excludes the end, `..=` includes it |
 | your structs and enums | | |
 
+A **type alias** gives a type a shorter name. It's the same type, not a new one:
+
+```rust
+type Grid = List[List[Bool]]
+type Handler = fn(Str) -> Int?
+
+fn blank(w: Int, h: Int) -> Grid { ... }
+```
+
+Aliases are declared at the top level, can be `pub`, and can refer to types declared later. *(not yet: generic aliases like `type Pairs[T] = ...`)*
+
 There are no automatic conversions. `1 + 2.0` is an error; write `float(1) + 2.0`. A `Str` is never a number either: use `str(n)` or a template string, `"${n}"`.
 
 ## Variables
