@@ -339,7 +339,6 @@ class Checker:
         self.scope = Scope(saved)
         result: Type = NIL
         try:
-            self.hoist_functions(block.stmts)
             for i, stmt in enumerate(block.stmts):
                 last = i == len(block.stmts) - 1
                 try:
@@ -356,11 +355,6 @@ class Checker:
         finally:
             self.scope = saved
         return result
-
-    def hoist_functions(self, stmts: list[A.Stmt]) -> None:
-        for stmt in stmts:
-            if isinstance(stmt, A.FnDecl):
-                self.declare_function(stmt, self.scope)
 
     def report_unused(self, scope: Scope) -> None:
         for binding in scope.names.values():
@@ -429,8 +423,8 @@ class Checker:
         elif isinstance(stmt, A.For):
             self.check_for(stmt)
         elif isinstance(stmt, A.FnDecl):
-            if self.scope.names.get(stmt.name) is not stmt.info:   # not hoisted (shouldn't happen)
-                self.declare_function(stmt, self.scope)
+            # A nested function: usable from here on, including inside itself (recursion).
+            self.declare_function(stmt, self.scope)
             self.check_function_body(stmt, self.scope)
         elif isinstance(stmt, (A.StructDecl, A.EnumDecl, A.ImplDecl, A.Import)):
             self.error("this declaration belongs at the top level", stmt.span)
@@ -1199,8 +1193,16 @@ def missing_cases(types: list[Type], rows: list[list[A.Pattern]]) -> list[str] |
     otherwise an example of an uncovered value (one string per column)."""
     if not types:
         return None if rows else []
+    if not rows:
+        return ["_"] * len(types)   # nothing matches here at all, so anything is an example
+    if any(all(irrefutable(p) for p in row) for row in rows):
+        return None          # a row of catch-alls covers everything that's left
     first = prune(types[0])
     rest = types[1:]
+    if rows and all(irrefutable(row[0]) for row in rows):
+        # Nothing looks inside this value, so don't expand it (recursive enums would never end).
+        found = missing_cases(rest, [row[1:] for row in rows])
+        return None if found is None else ["_"] + found
 
     def sub_missing(ctor_types: list[Type], specialized: list[list[A.Pattern]]) -> list[str] | None:
         return missing_cases(ctor_types + rest, specialized)

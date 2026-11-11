@@ -236,3 +236,13 @@ def test_warnings():
         "fn f(n: Int) -> Int { match n { x => 1, 0 => 2 } }")
     assert "this value isn't used" in warnings("fn f(a: Int) { a + 1 }")
     assert "the left side of '??' is never nil (it's an Int)" in warnings("let v = 1 ?? 2")
+
+
+def test_exhaustiveness_terminates_on_recursive_enums():
+    enum = "enum E { Num(Int), Add(E, E), Neg(E) }\n"
+    checked(enum + "fn f(e: E) -> Int { match e { Num(n) => n, Add(Num(0), b) => 0, Add(a, b) => 1, Neg(x) => 2 } }")
+    # Add(Num(0), _) is covered, so the example is an Add whose left side is another number.
+    assert error(enum + "fn f(e: E) -> Int { match e { Num(n) => n, Add(Num(0), b) => 0, Neg(_) => 2 } }") == \
+        "this match doesn't cover every case: E.Add(E.Num(another Int), _) isn't handled"
+    message = error(enum + "fn f(e: E) -> Int { match e { Num(n) => n, Add(_, _) => 1 } }")
+    assert message == "this match doesn't cover every case: E.Neg(_) isn't handled"
