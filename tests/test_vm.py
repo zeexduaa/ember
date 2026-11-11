@@ -474,3 +474,37 @@ print(match "Yes".lower() { "y" | "yes" => true, _ => false }, match Light.Yello
 print(match maybe { 1..=5 => "small", nil => "none", _ => "big" }, match E.A(3) { A(1..=5) | B => "hit", A(_) => "miss" })
 """
     assert lines(text) == ['["A", "A", "B", "B", "low", "negative", "other", "A", "other"]', "true 1", "none hit"]
+
+
+def test_struct_patterns():
+    text = """
+struct Point { x: Int, y: Int }
+fn where_is(p: Point) -> Str {
+    match p {
+        Point { x: 0, y: 0 } => "origin"
+        Point { x: 0, y } => "y axis at ${y}"
+        Point { y: 0, .. } => "x axis"
+        Point { x, y } if x == y => "diagonal"
+        _ => "elsewhere"
+    }
+}
+let a = Point { x: 0, y: 0 }
+let b = Point { x: 0, y: 5 }
+let c = Point { x: 3, y: 0 }
+let d = Point { x: 2, y: 2 }
+let e = Point { x: 1, y: 9 }
+print(where_is(a), where_is(b), where_is(c), where_is(d), where_is(e))
+enum Shape { Dot(Point), Line(Point, Point) }
+fn kind(s: Shape) -> Str {
+    match s {
+        Dot(Point { x: 0, .. }) => "dot on the y axis"
+        Dot(_) => "dot"
+        Line(Point { x: x1, .. }, Point { x: x2, .. }) if x1 == x2 => "vertical"
+        Line(_, _) => "line"
+    }
+}
+print(kind(Shape.Dot(a)), kind(Shape.Line(c, Point { x: 3, y: 7 })))
+let maybe: Point? = b
+print(match maybe { nil => "none", Point { x: 0, .. } => "x is zero", _ => "other" })
+"""
+    assert lines(text) == ["origin y axis at 5 x axis diagonal elsewhere", "dot on the y axis vertical", "x is zero"]

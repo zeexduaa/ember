@@ -13,7 +13,7 @@ Each item is (or will be) a GitHub issue. Please comment there before starting a
 - [x] **Type aliases**: `type Grid = List[List[Bool]]`. (S)
 - [x] **Range patterns and or-patterns**: `1..=9 => ...`, `"y" | "yes" => ...`. (M)
 - [ ] **Bindings in or-patterns and Int range exhaustiveness**: `Circle(r) | Ring(r, _) => ...`, and knowing that `..0 | 0 | 1..` covers every Int (needs open-ended ranges). (M)
-- [ ] **Struct patterns**: `Point { x: 0.0, y } => ...` in match. (M)
+- [x] **Struct patterns**: `Point { x: 0.0, y } => ...` in match. (M)
 - [ ] **Exhaustiveness for guards that are always true**: today a guarded arm never counts as covering. (S)
 
 ## v0.3: errors and the runtime

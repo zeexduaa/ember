@@ -206,6 +206,17 @@ class RangePat(Pattern):
 
 
 @dataclass
+class StructPat(Pattern):
+    name: str
+    fields: list[tuple[str, Pattern, Span]]     # a shorthand field `y` is ("y", BindPat("y"))
+    rest: bool                                  # `..` at the end: other fields are ignored
+
+    def __post_init__(self) -> None:
+        self.nullable = False
+        self.resolved: Any = None               # the StructT, from the checker
+
+
+@dataclass
 class OrPat(Pattern):
     options: list[Pattern]
 

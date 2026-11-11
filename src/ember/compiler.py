@@ -694,6 +694,20 @@ class Compiler:
             fc.emit(Op.LE if pat.inclusive else Op.LT)
             fails.append(fc.emit_jump(Op.JUMP_IF_FALSE))
             return
+        if isinstance(pat, A.StructPat):
+            struct = pat.resolved
+            if pat.nullable:
+                fc.emit(Op.GET_LOCAL, slot)
+                fails.append(fc.emit_jump(Op.JUMP_IF_NIL))
+            for fname, sub, _span in pat.fields:
+                if isinstance(sub, A.WildcardPat):
+                    continue
+                inner = fc.temp()
+                fc.emit(Op.GET_LOCAL, slot)
+                fc.emit(Op.GET_FIELD, struct.field_index(fname))
+                fc.emit(Op.SET_LOCAL, inner)
+                self.pattern(sub, inner, fails)
+            return
         if isinstance(pat, A.OrPat):
             matched: list[int] = []
             for i, option in enumerate(pat.options):

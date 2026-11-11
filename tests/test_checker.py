@@ -308,3 +308,14 @@ def test_pattern_alternative_errors(text, message):
 
 def test_empty_range_pattern_warns():
     assert "this range is empty, so the arm never matches" in warnings("fn f(n: Int) -> Int { match n { 5..5 => 1, _ => 2 } }")
+
+
+def test_struct_pattern_errors_and_exhaustiveness():
+    p = "struct P { x: Int, y: Int }\n"
+    assert error(p + "fn f(p: P) -> Int { match p { P { x: 0 } => 1, _ => 2 } }") == "the pattern doesn't mention y"
+    assert error(p + "fn f(p: P) -> Int { match p { P { z, .. } => 1, _ => 2 } }") == "P has no field 'z'"
+    assert error(p + "fn f(p: P) -> Int { match p { P { x: 0, .. } => 1 } }") == \
+        "this match doesn't cover every case: P { x: another Int, y: _ } isn't handled"
+    assert error(p + "fn f(n: Int) -> Int { match n { P { x, .. } => 1, _ => 2 } }") == \
+        "'P { ... }' is a struct pattern, but the value is an Int"
+    checked("struct Q { on: Bool }\nfn f(q: Q) -> Int { match q { Q { on: true } => 1, Q { on: false } => 2 } }")

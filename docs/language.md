@@ -276,6 +276,7 @@ Patterns:
 | `"y" \| "yes"`, `Red \| Yellow` | any of the alternatives *(they can't bind names yet)* |
 | `Circle(r)`, `Shape.Circle(r)` | that variant; the parts are patterns too, so `Add(Num(0), b)` works |
 | `Empty` | a variant without fields |
+| `Point { x: 0, y }`, `Point { y: 0, .. }` | a struct whose fields match; `y` alone binds the field, `..` ignores the fields not named |
 
 The checker requires a `match` to handle every possible value, and says which one is missing. Arms with a guard don't count toward that, because the guard might be false. An arm after a catch-all is reported as unreachable.
 

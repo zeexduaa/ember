@@ -1235,6 +1235,26 @@ class Checker:
                                     notes=["use _ in the alternatives, or give each one its own arm"])
                 self.check_pattern(option, t, narrow)
             return
+        if isinstance(pat, A.StructPat):
+            struct = t.inner if isinstance(t, OptionT) else t
+            pat.nullable = isinstance(t, OptionT)
+            if not isinstance(struct, StructT) or struct.name != pat.name:
+                raise self.fail(f"'{pat.name} {{ ... }}' is a struct pattern, but the value is {an(t)}", pat.span)
+            pat.resolved = struct
+            seen: set[str] = set()
+            for fname, sub, fspan in pat.fields:
+                if fname in seen:
+                    raise self.fail(f"field '{fname}' appears twice in the pattern", fspan)
+                seen.add(fname)
+                if fname not in struct.fields:
+                    raise self.fail(f"{struct.name} has no field '{fname}'", fspan,
+                                    notes=self.member_suggestion(struct, fname))
+                self.check_pattern(sub, struct.fields[fname])
+            missing = [f for f in struct.fields if f not in seen]
+            if missing and not pat.rest:
+                raise self.fail(f"the pattern doesn't mention {', '.join(missing)}", pat.span,
+                                notes=["add them, or end the pattern with .. to ignore the rest"])
+            return
         if isinstance(pat, A.RangePat):
             target = t.inner if isinstance(t, OptionT) else t
             pat.nullable = isinstance(t, OptionT)
@@ -1310,6 +1330,8 @@ def binds_names(pat: A.Pattern) -> bool:
         return any(binds_names(p) for p in pat.options)
     if isinstance(pat, A.VariantPat):
         return any(binds_names(p) for p in pat.args or [])
+    if isinstance(pat, A.StructPat):
+        return any(binds_names(p) for _, p, _ in pat.fields)
     return False
 
 
@@ -1359,6 +1381,22 @@ def missing_cases(types: list[Type], rows: list[list[A.Pattern]]) -> list[str] |
                 args = found[:len(fields)]
                 shown = f"{first.name}.{name}" + (f"({', '.join(args)})" if fields else "")
                 return [shown] + found[len(fields):]
+        return None
+    if isinstance(first, StructT):
+        # One shape: look at the fields, in declaration order.
+        names = list(first.fields)
+        specialized = []
+        for row in rows:
+            pat = row[0]
+            if irrefutable(pat):
+                specialized.append([A.WildcardPat(pat.span)] * len(names) + row[1:])
+            elif isinstance(pat, A.StructPat):
+                given = {name: sub for name, sub, _ in pat.fields}
+                specialized.append([given.get(n, A.WildcardPat(pat.span)) for n in names] + row[1:])
+        found = sub_missing(list(first.fields.values()), specialized)
+        if found is not None:
+            inner = ", ".join(f"{n}: {v}" for n, v in zip(names, found[:len(names)]))
+            return [f"{first.name} {{ {inner} }}"] + found[len(names):]
         return None
     if first == BOOL:
         for value in (True, False):

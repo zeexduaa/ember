@@ -608,6 +608,27 @@ class Parser:
         end = self.expect("}")
         return A.MapLit(start.span.to(end.span), entries)
 
+    def struct_pattern(self, name: Token) -> A.StructPat:
+        """Point { x: 0.0, y } or Point { x, .. }"""
+        self.expect("{")
+        fields: list[tuple[str, A.Pattern, Span]] = []
+        rest = False
+        self.skip_newlines()
+        while not self.at("}"):
+            if self.accept(".."):
+                rest = True
+                self.skip_newlines()
+                break
+            field = self.expect("ident", "a field name or ..")
+            pat = self.pattern() if self.accept(":") else A.BindPat(field.span, field.text)
+            fields.append((field.text, pat, field.span))
+            self.skip_newlines()
+            if not self.accept(","):
+                break
+            self.skip_newlines()
+        end = self.expect("}", "'}' to end the struct pattern")
+        return A.StructPat(name.span.to(end.span), name.text, fields, rest)
+
     def literal_pattern_value(self) -> A.Expr:
         start = self.tok
         negative = bool(self.accept("-"))
@@ -713,6 +734,8 @@ class Parser:
                 if enum_name is not None:
                     raise ParseError("variant names start with a capital letter", variant.span)
                 return A.BindPat(tok.span, tok.text)
+            if enum_name is None and self.at("{"):
+                return self.struct_pattern(tok)
             args = None
             end = variant.span
             if self.accept("("):
