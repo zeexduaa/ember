@@ -68,6 +68,7 @@ Hello, world!
 | `ember check FILE...` | Report errors and warnings without running |
 | `ember dis FILE` | Show the bytecode |
 | `ember eval "CODE"` | Run a snippet |
+| `ember test [PATH...]` | Run the `test_*` functions in `*_test.em` files (`-k TEXT` to pick some) |
 | `ember repl` or `ember` | The interactive prompt (`:type`, `:reset`, `:help`) |
 
 ```text

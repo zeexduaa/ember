@@ -37,7 +37,7 @@ Each item is (or will be) a GitHub issue. Please comment there before starting a
 - [ ] **Formatter**: `ember fmt` that keeps comments. The lexer drops them today, so it needs comment tokens first. (L)
 - [ ] **Language server**: diagnostics, hover types, go to definition and completion over LSP, reusing the checker. (XL)
 - [ ] **Debugger**: `ember debug` with breakpoints by line, step and inspecting locals, using the line table. (L)
-- [ ] **Test runner**: `ember test` running `test_*` functions in `*_test.em` files, with `assert_eq` showing both sides. (M)
+- [x] **Test runner**: `ember test` running `test_*` functions in `*_test.em` files, with `assert_eq` showing both sides. (M)
 - [ ] **Documentation comments**: `##` comments on declarations, and `ember doc` to print a module's public API. (M)
 - [ ] **REPL improvements**: re-check earlier definitions when a name is redefined with a new type, tab completion, and multi-line editing. (M)
 

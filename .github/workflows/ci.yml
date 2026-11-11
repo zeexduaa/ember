@@ -34,3 +34,4 @@ jobs:
           ember run examples/hello.em
           ember eval 'print([1, 2, 3].map(fn(x) { x * x }).sum())'
           printf 'let x = 20\nx + 1\n' | ember repl
+          ember test examples

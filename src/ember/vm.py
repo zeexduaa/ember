@@ -106,11 +106,30 @@ class VM:
     # -- entry points ---------------------------------------------------------------------------------
 
     def run_main(self, proto: FunctionProto, globals_: dict[str, Any] | None = None) -> Any:
-        """Runs a program's top level. Built-ins like map call back into ember through Python, so
-        each nested callback uses several Python frames; to let ember's own limit (MAX_FRAMES)
-        apply rather than Python's, the program runs on a thread with a large stack."""
+        """Runs a program's top level."""
+        return self._on_big_stack(lambda: self._run_main(proto, globals_))
+
+    def call_function(self, fn: Closure, args: list[Any], globals_: dict[str, Any]) -> Any:
+        """Calls one ember function from Python as a fresh run (used by `ember test`)."""
+        def run() -> Any:
+            self.frames.append(Frame(fn, list(args), globals_))
+            try:
+                return self._run(len(self.frames) - 1)
+            except EmberPanic as exc:
+                raise RuntimeFailure(exc.message, exc.trace, getattr(exc, "where", None)) from None
+            except RecursionError:
+                raise RuntimeFailure("stack overflow: callbacks (map, filter, sort_by...) nested too deeply",
+                                     []) from None
+            finally:
+                self.frames.clear()
+        return self._on_big_stack(run)
+
+    def _on_big_stack(self, work: Any) -> Any:
+        """Built-ins like map call back into ember through Python, so each nested callback uses
+        several Python frames; to let ember's own limit (MAX_FRAMES) apply rather than Python's,
+        programs run on a thread with a large stack."""
         if getattr(_deep_stack, "active", False):
-            return self._run_main(proto, globals_)
+            return work()
         outcome: dict[str, Any] = {}
 
         def target() -> None:
@@ -118,7 +137,7 @@ class VM:
             if sys.getrecursionlimit() < PYTHON_RECURSION:
                 sys.setrecursionlimit(PYTHON_RECURSION)   # this thread's large stack has room for it
             try:
-                outcome["value"] = self._run_main(proto, globals_)
+                outcome["value"] = work()
             except BaseException as exc:  # handed to the calling thread below
                 outcome["error"] = exc
 
@@ -126,7 +145,7 @@ class VM:
         try:
             threading.stack_size(THREAD_STACK)
         except (ValueError, RuntimeError):  # pragma: no cover - a platform that refuses: a normal stack, and
-            return self._run_main(proto, globals_)  # deep callbacks stop at Python's limit (with a clear error)
+            return work()                    # deep callbacks stop at Python's limit (with a clear error)
         try:
             worker = threading.Thread(target=target, name="ember", daemon=True)
             worker.start()

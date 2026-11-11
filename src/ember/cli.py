@@ -4,6 +4,7 @@
     ember check FILE...   report errors and warnings without running
     ember dis FILE        show the bytecode
     ember eval "CODE"     run a snippet
+    ember test [PATH...]  run the test_* functions in *_test.em files
     ember repl            the interactive prompt (also: ember with no arguments)
 """
 
@@ -100,6 +101,12 @@ def cmd_eval(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_test(args: argparse.Namespace) -> int:
+    from .testing import run_tests
+
+    return run_tests(args.paths, args.k)
+
+
 def cmd_repl(args: argparse.Namespace) -> int:
     from .repl import Session
 
@@ -133,6 +140,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("eval", help="run a snippet of code")
     p.add_argument("code")
     p.set_defaults(func=cmd_eval)
+
+    p = sub.add_parser("test", help="run the test_* functions in *_test.em files")
+    p.add_argument("paths", nargs="*", help="files or folders (default: the current folder)")
+    p.add_argument("-k", metavar="TEXT", help="only run tests whose name contains TEXT")
+    p.set_defaults(func=cmd_test)
 
     p = sub.add_parser("repl", help="the interactive prompt")
     p.set_defaults(func=cmd_repl)

@@ -102,6 +102,12 @@ def _assert(vm: Any, cond: bool, message: str = "assertion failed") -> None:
         raise EmberPanic(message)
 
 
+def _assert_eq(vm: Any, actual: Any, expected: Any, message: str = "") -> None:
+    if actual != expected:
+        detail = f"{format_value(actual, True)} != {format_value(expected, True)}"
+        raise EmberPanic(f"assert_eq failed: {detail}" + (f" ({message})" if message else ""))
+
+
 def _min(vm: Any, a: Any, b: Any) -> Any:
     return a if a <= b else b
 
@@ -162,8 +168,24 @@ def _check_same(checker: "Checker", call: A.Call) -> Type:
     return BOOL
 
 
+def _check_assert_eq(checker: "Checker", call: A.Call) -> Type:
+    if len(call.args) not in (2, 3):
+        raise checker.fail("'assert_eq' takes the actual value, the expected value and an optional message",
+                           call.span)
+    actual = checker.check_expr(call.args[0])
+    expected = checker.check_expr(call.args[1], actual)
+    if not (checker.fits(expected, actual) or checker.fits(actual, expected)):
+        checker.error(f"assert_eq compares two values of the same type, found {resolve(actual)} and "
+                      f"{resolve(expected)}", call.span)
+    if isinstance(prune(actual), FnT):
+        checker.error("functions can't be compared", call.args[0].span)
+    if len(call.args) == 3:
+        checker.expect(checker.check_expr(call.args[2], STR), STR, call.args[2].span, "'assert_eq' message")
+    return NIL
+
+
 SPECIAL_CHECKS = {"print": _check_print, "str": _check_str, "min": _check_min_max, "max": _check_min_max,
-                  "assert": _check_assert, "same": _check_same}
+                  "assert": _check_assert, "same": _check_same, "assert_eq": _check_assert_eq}
 
 
 def _fn(*params: Type, ret: Type) -> FnT:
@@ -178,6 +200,9 @@ BUILTIN_FUNCTIONS: dict[str, FunctionSpec] = {s.name: s for s in [
     FunctionSpec("min", None, _min, "min(a, b): the smaller of two Ints, Floats or Strs", special=True),
     FunctionSpec("max", None, _max, "max(a, b): the larger of two Ints, Floats or Strs", special=True),
     FunctionSpec("assert", None, _assert, "assert(cond, message?): stops the program if cond is false",
+                 special=True),
+    FunctionSpec("assert_eq", None, _assert_eq,
+                 "assert_eq(actual, expected, message?): stops the program, showing both, if they differ",
                  special=True),
     FunctionSpec("same", None, lambda vm, a, b: a is b,
                  "same(a, b) -> Bool: true if a and b are the same struct, list or map (not just equal)",

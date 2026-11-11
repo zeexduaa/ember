@@ -23,6 +23,7 @@ The first version, so everything is new:
 - Struct patterns in match: `Point { x: 0, y }` and `Point { y: 0, .. }`, nested and checked for exhaustiveness.
 - `if x != nil`, `x == nil` with an early return, and `and`/`or` chains narrow an optional `let` or parameter.
 - Runtime errors show the source line with the failing expression marked, like compile errors.
+- `ember test` runs `test_*` functions in `*_test.em` files; `assert_eq` shows both values when they differ.
 
 ### Fixed before release
 

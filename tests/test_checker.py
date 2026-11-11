@@ -348,3 +348,8 @@ def test_vars_and_the_wrong_branch_are_not_narrowed():
         "fn f(n: Int?) -> Int { if n != nil { return 1 }\nn + 1 }")
     assert "'+' needs two values of the same type, found Int and Int?" in errors(
         "fn f(n: Int?) -> Int { if n == nil { 0 } else { 1 } + n }")   # outside the if, n is optional again
+
+
+def test_assert_eq_needs_two_values_of_the_same_type():
+    assert error('assert_eq(1, "1")') == "assert_eq compares two values of the same type, found Int and Str"
+    checked("let x: Int? = nil\nassert_eq(x, nil)\nassert_eq([1], [1], \"lists\")")

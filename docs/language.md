@@ -15,6 +15,7 @@ A guide to everything ember supports today. Things that aren't supported yet are
 - [Generic functions](#generic-functions)
 - [Modules](#modules)
 - [Built-in functions](#built-in-functions)
+- [Tests](#tests)
 - [Runtime errors](#runtime-errors)
 - [Things to know](#things-to-know)
 
@@ -379,9 +380,34 @@ A file of yours with the same name takes precedence over the standard library's.
 | `sqrt(x)`, `pow(a, b)` | `Float` |
 | `min(a, b)`, `max(a, b)` | two Ints, Floats or Strs |
 | `assert(cond, message?)` | stops the program if cond is false |
+| `assert_eq(actual, expected, message?)` | stops the program, showing both values, if they differ |
 | `same(a, b) -> Bool` | true if a and b are the same struct, list or map, not just equal ones |
 | `panic(message)` | stops the program; fits wherever any value is expected |
 | `clock() -> Float` | seconds, for timing |
+
+## Tests
+
+`ember test` runs every top-level function whose name starts with `test_` (and takes no arguments) in files named `*_test.em`, in the given files or folders (the current folder by default):
+
+```rust
+# math_test.em
+import "math"
+
+fn test_gcd() {
+    assert_eq(math.gcd(84, 36), 12)
+    assert_eq(math.gcd(-84, 36), 12, "the sign is dropped")
+}
+```
+
+```text
+$ ember test
+math_test.em
+  ok    test_gcd
+
+1 test(s): 1 passed, 0 failed (0.01 s)
+```
+
+A file's top level runs once before its tests. Each test runs on its own, so one failing (a failed `assert`, a `panic` or any runtime error) doesn't stop the rest. `-k TEXT` runs only the tests whose name contains TEXT. See [`examples/tests`](../examples/tests).
 
 ## Runtime errors
 
