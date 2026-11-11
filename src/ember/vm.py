@@ -164,6 +164,9 @@ class VM:
         GET_LOCAL, SET_LOCAL, GET_UPVALUE, SET_UPVALUE = O.GET_LOCAL, O.SET_LOCAL, O.GET_UPVALUE, O.SET_UPVALUE
         GET_GLOBAL, IADD, ISUB, IMUL, LT, LE, GT, GE, EQ = O.GET_GLOBAL, O.IADD, O.ISUB, O.IMUL, O.LT, O.LE, O.GT, O.GE, O.EQ
         JUMP, JUMP_IF_FALSE, CALL, RETURN, FOR_ITER = O.JUMP, O.JUMP_IF_FALSE, O.CALL, O.RETURN, O.FOR_ITER
+        IMOD, IDIV, SET_GLOBAL, NOT, NE = O.IMOD, O.IDIV, O.SET_GLOBAL, O.NOT, O.NE
+        AND_JUMP, OR_JUMP, NIL_JUMP = O.JUMP_IF_FALSE_OR_POP, O.JUMP_IF_TRUE_OR_POP, O.JUMP_IF_NOT_NIL
+        FADD, FSUB, FMUL = O.FADD, O.FSUB, O.FMUL
         INT_MIN, INT_MAX = -(2 ** 63), 2 ** 63 - 1
         ip = frame.ip
         while True:
@@ -293,6 +296,64 @@ class VM:
             elif op == SET_UPVALUE:
                 frame.closure.upvalues[code[ip + 1]].set(pop())
                 ip += 2
+            elif op == IMOD:
+                b = pop()
+                a = pop()
+                if a >= 0 and b > 0:          # the common case: Python's % agrees with truncation here
+                    push(a % b)
+                else:
+                    frame.ip = ip + 1
+                    push(int_mod(a, b))
+                ip += 1
+            elif op == IDIV:
+                b = pop()
+                a = pop()
+                if a >= 0 and b > 0:
+                    push(a // b)
+                else:
+                    frame.ip = ip + 1
+                    push(int_div(a, b))
+                ip += 1
+            elif op == SET_GLOBAL:
+                frame.globals[constants[code[ip + 1]]] = pop()
+                ip += 2
+            elif op == NOT:
+                push(not pop())
+                ip += 1
+            elif op == NE:
+                b = pop()
+                push(not _equal(pop(), b))
+                ip += 1
+            elif op == AND_JUMP:
+                if stack[-1]:
+                    pop()
+                    ip += 2
+                else:
+                    ip = code[ip + 1]
+            elif op == OR_JUMP:
+                if stack[-1]:
+                    ip = code[ip + 1]
+                else:
+                    pop()
+                    ip += 2
+            elif op == NIL_JUMP:
+                if stack[-1] is not None:
+                    ip = code[ip + 1]
+                else:
+                    pop()
+                    ip += 2
+            elif op == FADD:
+                b = pop()
+                push(pop() + b)
+                ip += 1
+            elif op == FSUB:
+                b = pop()
+                push(pop() - b)
+                ip += 1
+            elif op == FMUL:
+                b = pop()
+                push(pop() * b)
+                ip += 1
             else:
                 frame.ip = ip
                 ip = self._slow(op, frame, code, constants, stack)
