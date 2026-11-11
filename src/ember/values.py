@@ -12,6 +12,7 @@ The checker makes sure ``T??`` can't happen, so that's unambiguous.
 from __future__ import annotations
 
 import math
+import threading
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -103,10 +104,34 @@ class StructValue:
         self.values = values
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, StructValue) and other.type is self.type and other.values == self.values
+        if not isinstance(other, StructValue) or other.type is not self.type:
+            return False
+        if other is self:
+            return True
+        # Structs can refer to themselves (a node in its own list). While a pair is being
+        # compared, meeting it again counts as equal, so comparing two such cycles ends.
+        pair = (id(self), id(other))
+        seen = _comparing()
+        if pair in seen:
+            return True
+        seen.add(pair)
+        try:
+            return other.values == self.values
+        finally:
+            seen.discard(pair)
 
     def __hash__(self) -> int:  # pragma: no cover - structs aren't map keys
         return id(self)
+
+
+_state = threading.local()
+
+
+def _comparing() -> set[tuple[int, int]]:
+    seen = getattr(_state, "comparing", None)
+    if seen is None:
+        seen = _state.comparing = set()
+    return seen
 
 
 @dataclass(eq=False)
@@ -141,8 +166,9 @@ class Module:
     globals: dict[str, Any]
 
 
-def format_value(value: Any, quoted: bool = False) -> str:
-    """How print() and str() show a value. Strings are quoted only inside collections."""
+def format_value(value: Any, quoted: bool = False, _seen: set[int] | None = None) -> str:
+    """How print() and str() show a value. Strings are quoted only inside collections.
+    A struct met again inside itself is shown as ``...``."""
     if value is None:
         return "nil"
     if value is True:
@@ -155,18 +181,15 @@ def format_value(value: Any, quoted: bool = False) -> str:
         return str(value)
     if isinstance(value, str):
         return quote(value) if quoted else value
-    if isinstance(value, list):
-        return "[" + ", ".join(format_value(v, True) for v in value) + "]"
-    if isinstance(value, dict):
-        return "{" + ", ".join(f"{format_value(k, True)}: {format_value(v, True)}" for k, v in value.items()) + "}"
-    if isinstance(value, StructValue):
-        inner = ", ".join(f"{name}: {format_value(v, True)}" for name, v in zip(value.type.fields, value.values))
-        return f"{value.type.name} {{ {inner} }}" if inner else f"{value.type.name} {{}}"
-    if isinstance(value, EnumValue):
-        name = f"{value.type.name}.{value.variant}"
-        if value.values:
-            return f"{name}({', '.join(format_value(v, True) for v in value.values)})"
-        return name
+    if isinstance(value, (list, dict, StructValue, EnumValue)):
+        seen = set() if _seen is None else _seen
+        if id(value) in seen:
+            return "..."
+        seen.add(id(value))
+        try:
+            return _format_container(value, seen)
+        finally:
+            seen.discard(id(value))
     if isinstance(value, Closure):
         return f"<fn {value.proto.name}>"
     if isinstance(value, NativeFn):
@@ -176,11 +199,29 @@ def format_value(value: Any, quoted: bool = False) -> str:
     return repr(value)  # pragma: no cover
 
 
+def _format_container(value: Any, seen: set[int]) -> str:
+    def show(v: Any) -> str:
+        return format_value(v, True, seen)
+    if isinstance(value, list):
+        return "[" + ", ".join(show(v) for v in value) + "]"
+    if isinstance(value, dict):
+        return "{" + ", ".join(f"{show(k)}: {show(v)}" for k, v in value.items()) + "}"
+    if isinstance(value, StructValue):
+        inner = ", ".join(f"{name}: {show(v)}" for name, v in zip(value.type.fields, value.values))
+        return f"{value.type.name} {{ {inner} }}" if inner else f"{value.type.name} {{}}"
+    name = f"{value.type.name}.{value.variant}"
+    if value.values:
+        return f"{name}({', '.join(show(v) for v in value.values)})"
+    return name
+
+
 def format_float(value: float) -> str:
     if math.isnan(value):
         return "nan"
     if math.isinf(value):
         return "inf" if value > 0 else "-inf"
+    if value == 0:
+        return "-0.0" if math.copysign(1.0, value) < 0 else "0.0"
     if value == int(value) and abs(value) < 1e16:
         return f"{int(value)}.0"
     return repr(value)

@@ -371,3 +371,22 @@ def test_disassembler_lists_nested_functions():
 @pytest.mark.parametrize("expr", ["m / -1", "m.abs()", "-m", "m % -1", "[9223372036854775807, 1].sum()", "2.pow(63)"])
 def test_every_overflow_is_caught(expr):
     assert failure(f"let m = -9223372036854775807 - 1\nprint({expr})").message == "integer overflow (Int is 64-bit)"
+
+
+def test_structs_that_contain_themselves_print_and_compare():
+    text = """
+struct N { v: Int, next: List[N] }
+let a = N { v: 1, next: [] }
+a.next.push(a)
+let b = N { v: 1, next: [] }
+b.next.push(b)
+let c = N { v: 2, next: [] }
+c.next.push(c)
+print(a)
+print(a == b, a == c, [a].contains(b), "${a.v}")
+"""
+    assert lines(text) == ["N { v: 1, next: [...] }", "true false true 1"]
+
+
+def test_negative_zero_keeps_its_sign():
+    assert run("print(-0.0, 0.0 * -1.0, 0.0)") == "-0.0 -0.0 0.0\n"
