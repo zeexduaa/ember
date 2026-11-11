@@ -25,7 +25,8 @@ from .values import (Closure, EmberPanic, EnumType, EnumValue, FunctionProto, Mo
                      StructValue, Upvalue, check_int, format_value, int_div, int_mod)
 
 MAX_FRAMES = 2_000
-THREAD_STACK = 256 * 1024 * 1024     # bytes; enough for MAX_FRAMES nested callbacks
+# Bytes. Windows only accepts sizes below 256 MiB (an exact 256 MiB is refused), so stay well under.
+THREAD_STACK = 128 * 1024 * 1024
 PYTHON_RECURSION = 60_000
 _deep_stack = threading.local()
 
@@ -118,8 +119,8 @@ class VM:
         old_size = threading.stack_size()
         try:
             threading.stack_size(THREAD_STACK)
-        except (ValueError, RuntimeError):  # pragma: no cover - platforms that refuse; run with a normal stack
-            return self._run_main(proto, globals_)
+        except (ValueError, RuntimeError):  # pragma: no cover - a platform that refuses: a normal stack, and
+            return self._run_main(proto, globals_)  # deep callbacks stop at Python's limit (with a clear error)
         try:
             worker = threading.Thread(target=target, name="ember", daemon=True)
             worker.start()

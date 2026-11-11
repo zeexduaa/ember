@@ -392,6 +392,16 @@ def test_negative_zero_keeps_its_sign():
     assert run("print(-0.0, 0.0 * -1.0, 0.0)") == "-0.0 -0.0 0.0\n"
 
 
+def test_programs_get_a_large_thread_stack():
+    import threading
+    from ember.vm import THREAD_STACK
+    old = threading.stack_size()
+    try:
+        threading.stack_size(THREAD_STACK)   # must be accepted on every platform (Windows needs < 256 MiB)
+    finally:
+        threading.stack_size(old)
+
+
 def test_deep_recursion_through_callbacks_reaches_embers_own_limit():
     text = """
 fn depth(n: Int) -> Int {
