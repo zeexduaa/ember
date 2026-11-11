@@ -217,6 +217,7 @@ class Compiler:
                 fc.at(stmt.span)
                 self.expr(stmt.expr)
                 fc.emit(Op.RETURN)
+                fc.proto.returns_value = True  # type: ignore[attr-defined]
                 return fc.proto
             self.stmt(stmt)
         fc.emit(Op.NIL)
