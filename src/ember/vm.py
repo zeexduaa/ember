@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import math
 import sys
+import threading
 from typing import IO, Any
 
 from .builtins import BUILTIN_FUNCTIONS, method_impl
@@ -24,6 +25,9 @@ from .values import (Closure, EmberPanic, EnumType, EnumValue, FunctionProto, Mo
                      StructValue, Upvalue, check_int, format_value, int_div, int_mod)
 
 MAX_FRAMES = 2_000
+THREAD_STACK = 256 * 1024 * 1024     # bytes; enough for MAX_FRAMES nested callbacks
+PYTHON_RECURSION = 60_000
+_deep_stack = threading.local()
 
 
 class RuntimeFailure(Exception):
@@ -38,16 +42,26 @@ class RuntimeFailure(Exception):
         """Repeated frames are collapsed (deep recursion would print thousands), and long traces are cut."""
         lines = [f"runtime error: {self.message}"]
         collapsed: list[str] = []
+        trace = self.trace
         i = 0
-        while i < len(self.trace):
-            j = i
-            while j + 1 < len(self.trace) and self.trace[j + 1] == self.trace[i]:
-                j += 1
-            entry = f"  at {self.trace[i]}"
-            if j > i:
-                entry += f"  (and {j - i} more times)"
-            collapsed.append(entry)
-            i = j + 1
+        while i < len(trace):
+            # A run of one frame, or a group of up to 4 (f -> lambda -> f -> lambda ...), repeating.
+            best_size, best_repeats = 1, 1
+            for size in range(1, 5):
+                repeats = 1
+                while trace[i + repeats * size:i + (repeats + 1) * size] == trace[i:i + size]:
+                    repeats += 1
+                if repeats > 1 and repeats * size > best_repeats * best_size:
+                    best_size, best_repeats = size, repeats
+            group = [f"  at {entry}" for entry in trace[i:i + best_size]]
+            if best_repeats > 1:
+                more = best_repeats - 1
+                if best_size == 1:
+                    group[0] += f"  (and {more} more times)"
+                else:
+                    group.append(f"  (these {best_size} lines repeat {more} more times)")
+            collapsed.extend(group)
+            i += best_size * best_repeats
         if len(collapsed) > limit:
             hidden = len(collapsed) - limit
             collapsed = collapsed[:limit - 2] + [f"  ... {hidden} more calls ..."] + collapsed[-2:]
@@ -80,10 +94,50 @@ class VM:
         self.builtins: dict[str, NativeFn] = {
             name: NativeFn(name, spec.impl, None) for name, spec in BUILTIN_FUNCTIONS.items()}
         self.module_protos: dict[str, FunctionProto] = {}   # compiled modules, by id, run on first import
+        self.interrupted = False                            # set from another thread to stop the program
 
     # -- entry points ---------------------------------------------------------------------------------
 
     def run_main(self, proto: FunctionProto, globals_: dict[str, Any] | None = None) -> Any:
+        """Runs a program's top level. Built-ins like map call back into ember through Python, so
+        each nested callback uses several Python frames; to let ember's own limit (MAX_FRAMES)
+        apply rather than Python's, the program runs on a thread with a large stack."""
+        if getattr(_deep_stack, "active", False):
+            return self._run_main(proto, globals_)
+        outcome: dict[str, Any] = {}
+
+        def target() -> None:
+            _deep_stack.active = True
+            if sys.getrecursionlimit() < PYTHON_RECURSION:
+                sys.setrecursionlimit(PYTHON_RECURSION)   # this thread's large stack has room for it
+            try:
+                outcome["value"] = self._run_main(proto, globals_)
+            except BaseException as exc:  # handed to the calling thread below
+                outcome["error"] = exc
+
+        old_size = threading.stack_size()
+        try:
+            threading.stack_size(THREAD_STACK)
+        except (ValueError, RuntimeError):  # pragma: no cover - platforms that refuse; run with a normal stack
+            return self._run_main(proto, globals_)
+        try:
+            worker = threading.Thread(target=target, name="ember", daemon=True)
+            worker.start()
+        finally:
+            threading.stack_size(old_size)
+        try:
+            while worker.is_alive():
+                worker.join(0.1)      # wake up regularly so Ctrl+C still reaches the main thread
+        except KeyboardInterrupt:
+            self.interrupted = True   # the program stops at its next loop jump or call
+            worker.join(2.0)
+            self.interrupted = False
+            raise
+        if "error" in outcome:
+            raise outcome["error"]
+        return outcome.get("value")
+
+    def _run_main(self, proto: FunctionProto, globals_: dict[str, Any] | None) -> Any:
         globals_ = {} if globals_ is None else globals_
         self.modules.setdefault(proto.module, Module(proto.module, globals_))
         closure = Closure(proto, [])
@@ -93,7 +147,7 @@ class VM:
         except EmberPanic as exc:
             raise RuntimeFailure(exc.message, exc.trace) from None
         except RecursionError:
-            raise RuntimeFailure("stack overflow (too much recursion through built-in methods)", []) from None
+            raise RuntimeFailure("stack overflow: callbacks (map, filter, sort_by...) nested too deeply", []) from None
         finally:
             self.frames.clear()
 
@@ -218,6 +272,9 @@ class VM:
                 push(_equal(pop(), b))
                 ip += 1
             elif op == JUMP:
+                if self.interrupted:
+                    frame.ip = ip + 2
+                    raise EmberPanic("interrupted")
                 ip = code[ip + 1]
             elif op == JUMP_IF_FALSE:
                 ip = ip + 2 if pop() else code[ip + 1]
@@ -238,6 +295,8 @@ class VM:
             elif op == CALL:
                 argc = code[ip + 1]
                 frame.ip = ip + 2
+                if self.interrupted:
+                    raise EmberPanic("interrupted")
                 args = stack[len(stack) - argc:] if argc else []
                 del stack[len(stack) - argc:]
                 callee = pop()

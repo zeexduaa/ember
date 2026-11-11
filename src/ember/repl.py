@@ -140,3 +140,5 @@ class Session:
                 write(exc.render() + "\n")
             except RuntimeFailure as exc:
                 write(exc.render() + "\n")
+            except KeyboardInterrupt:
+                write("\ninterrupted\n")

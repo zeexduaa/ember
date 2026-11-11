@@ -390,3 +390,29 @@ print(a == b, a == c, [a].contains(b), "${a.v}")
 
 def test_negative_zero_keeps_its_sign():
     assert run("print(-0.0, 0.0 * -1.0, 0.0)") == "-0.0 -0.0 0.0\n"
+
+
+def test_deep_recursion_through_callbacks_reaches_embers_own_limit():
+    text = """
+fn depth(n: Int) -> Int {
+    if n == 0 { return 0 }
+    [n].map(fn(x) { depth(x - 1) })[0] + 1
+}
+print(depth(900))
+"""
+    assert run(text) == "900\n"      # used to stop at about 150, on Python's recursion limit
+    err = failure("fn d(n: Int) -> Int { [n].map(fn(x) { d(x + 1) })[0] }\nprint(d(0))")
+    assert err.message.startswith("stack overflow: more than 2000 calls deep")
+    shown = err.render()
+    assert "(these 2 lines repeat" in shown and len(shown.splitlines()) < 10
+
+
+def test_interrupting_a_running_program():
+    import threading
+    from ember.driver import compile_source, make_vm
+    compiled = compile_source("var n = 0\nwhile true { n += 1 }")
+    vm = make_vm(compiled)
+    threading.Timer(0.3, lambda: setattr(vm, "interrupted", True)).start()
+    with pytest.raises(RuntimeFailure) as exc:
+        vm.run_main(compiled.proto)
+    assert exc.value.message == "interrupted"
