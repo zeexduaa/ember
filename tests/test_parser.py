@@ -152,3 +152,9 @@ def test_error_messages(text, message):
 def test_pipes_outside_patterns_suggest_or():
     assert errors_of(parse, "let a = x || y") == ["'||' isn't an operator in ember; use 'or'"]
     assert errors_of(parse, "let a = x | y") == ["'|' isn't an operator in ember; use 'or'"]
+
+
+def test_struct_literals_inside_brackets_in_a_loop_or_if_head():
+    prog = parse("for p in [Point { x: 0 }, f(Point { x: 1 })] { }\nif xs[Key { k: 1 }.k] == {Point { x: 2 }.x: 1}[2] { }")
+    assert sexpr(prog.stmts[0].iterable) == "[(struct Point x:0) (call f (struct Point x:1))]"
+    assert "struct Key" in sexpr(prog.stmts[1].expr.cond.left.index.target)

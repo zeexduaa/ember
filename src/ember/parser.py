@@ -424,6 +424,16 @@ class Parser:
         finally:
             self.no_struct = saved
 
+    def nested_expression(self) -> A.Expr:
+        """An expression inside ( ), [ ] or a map literal: a `{` there can't start the if/for block,
+        so struct literals are allowed again (for p in [Point { x: 0 }] { ... })."""
+        saved = self.no_struct
+        self.no_struct = False
+        try:
+            return self.expression()
+        finally:
+            self.no_struct = saved
+
     def expression(self, min_prec: int = 0) -> A.Expr:
         left = self.prefix()
         while True:
@@ -465,14 +475,14 @@ class Parser:
                 self.advance()
                 args = []
                 while not self.at(")"):
-                    args.append(self.expression())
+                    args.append(self.nested_expression())
                     if not self.accept(","):
                         break
                 end = self.expect(")", "')' or ',' in the call")
                 expr = A.Call(expr.span.to(end.span), expr, args)
             elif tok.kind == "[":
                 self.advance()
-                index = self.expression()
+                index = self.nested_expression()
                 end = self.expect("]", "']'")
                 expr = A.Index(expr.span.to(end.span), expr, index)
             elif tok.kind == ".":
@@ -555,7 +565,7 @@ class Parser:
             self.advance()
             items = []
             while not self.at("]"):
-                items.append(self.expression())
+                items.append(self.nested_expression())
                 if not self.accept(","):
                     break
             end = self.expect("]", "']' or ',' in the list")
@@ -594,9 +604,9 @@ class Parser:
         entries = []
         self.skip_newlines()
         while not self.at("}"):
-            key = self.expression()
+            key = self.nested_expression()
             self.expect(":", "':' between a key and its value")
-            value = self.expression()
+            value = self.nested_expression()
             entries.append((key, value))
             self.skip_newlines()
             if not self.accept(","):
