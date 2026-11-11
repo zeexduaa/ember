@@ -168,7 +168,7 @@ class VM:
     def call_value(self, fn: Any, args: list[Any]) -> Any:
         """Calls an ember function from Python (used by map, filter, sort_by...)."""
         if isinstance(fn, NativeFn):
-            return fn.fn(self, *args)
+            return call_native(fn.fn, self, args)
         assert isinstance(fn, Closure)
         caller = self.frames[-1] if self.frames else None
         globals_ = self._globals_for(fn.proto.module, caller) if caller is not None else {}
@@ -307,7 +307,7 @@ class VM:
                     push, pop = stack.append, stack.pop
                     ip = 0
                 elif isinstance(callee, NativeFn):
-                    push(callee.fn(self, *args))
+                    push(call_native(callee.fn, self, args))
                     ip = frame.ip
                 else:  # pragma: no cover - the checker prevents this
                     raise EmberPanic(f"can't call {format_value(callee)}")
@@ -507,7 +507,7 @@ class VM:
             args = stack[len(stack) - argc:] if argc else []
             del stack[len(stack) - argc:]
             frame.ip = ip + 3
-            push(self.builtins[name].fn(self, *args))
+            push(call_native(self.builtins[name].fn, self, args))
             return ip + 3
         if op == O.CALL_METHOD:
             name = constants[code[ip + 1]]
@@ -519,7 +519,7 @@ class VM:
             impl = method_impl(receiver, name)
             if impl is None:  # pragma: no cover - the checker prevents this
                 raise EmberPanic(f"{format_value(receiver, True)} has no method {name}")
-            push(impl(self, receiver, *args))
+            push(call_method(impl, self, receiver, args))
             return ip + 3
         if op == O.CLOSURE:
             proto: FunctionProto = constants[code[ip + 1]]
@@ -634,6 +634,33 @@ class VM:
             frame.ip = ip + 1
             raise EmberPanic("no match arm matched (this is a bug in ember's exhaustiveness check)")
         raise EmberPanic(f"unknown instruction {op}")  # pragma: no cover
+
+
+def call_native(fn: Any, vm: VM, args: list[Any]) -> Any:
+    """fn(vm, *args), but with ordinary calls for the usual argument counts. A call with *args
+    goes through C, and callbacks that recurse deeply would hit Python's C recursion limit
+    (low on Windows); an ordinary Python-to-Python call doesn't use the C stack."""
+    n = len(args)
+    if n == 0:
+        return fn(vm)
+    if n == 1:
+        return fn(vm, args[0])
+    if n == 2:
+        return fn(vm, args[0], args[1])
+    if n == 3:
+        return fn(vm, args[0], args[1], args[2])
+    return fn(vm, *args)
+
+
+def call_method(fn: Any, vm: VM, receiver: Any, args: list[Any]) -> Any:
+    n = len(args)
+    if n == 0:
+        return fn(vm, receiver)
+    if n == 1:
+        return fn(vm, receiver, args[0])
+    if n == 2:
+        return fn(vm, receiver, args[0], args[1])
+    return fn(vm, receiver, *args)
 
 
 def _equal(a: Any, b: Any) -> bool:

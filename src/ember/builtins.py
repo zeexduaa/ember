@@ -449,11 +449,11 @@ IMPLS: dict[str, dict[str, Impl]] = {
         "join": lambda vm, xs, sep: sep.join(xs),
         "map": lambda vm, xs, f: [vm.call_value(f, [x]) for x in list(xs)],
         "filter": lambda vm, xs, f: [x for x in list(xs) if vm.call_value(f, [x])],
-        "find": lambda vm, xs, f: next((x for x in list(xs) if vm.call_value(f, [x])), None),
-        "any": lambda vm, xs, f: any(vm.call_value(f, [x]) for x in list(xs)),
-        "all": lambda vm, xs, f: all(vm.call_value(f, [x]) for x in list(xs)),
-        "count": lambda vm, xs, f: sum(1 for x in list(xs) if vm.call_value(f, [x])),
-        "each": lambda vm, xs, f: [vm.call_value(f, [x]) for x in list(xs)] and None,
+        "find": lambda vm, xs, f: _find(vm, xs, f),
+        "any": lambda vm, xs, f: _any(vm, xs, f),
+        "all": lambda vm, xs, f: _all(vm, xs, f),
+        "count": lambda vm, xs, f: len([x for x in list(xs) if vm.call_value(f, [x])]),
+        "each": lambda vm, xs, f: _each(vm, xs, f),
         "reduce": lambda vm, xs, init, f: _reduce(vm, xs, init, f),
         "sort_by": lambda vm, xs, f: _sorted_key(vm, xs, f),
     },
@@ -478,6 +478,36 @@ IMPLS: dict[str, dict[str, Impl]] = {
               "ceil": lambda vm, x: _int(vm, math.ceil(x)) if math.isfinite(x) else _int(vm, x),
               "round": _round, "is_nan": lambda vm, x: math.isnan(x)},
 }
+
+
+# Callbacks into ember are kept to plain Python loops and calls (no any()/next() over a
+# generator, no *args): those go through C, and deep recursion through C runs into
+# Python's C recursion limit, which is low on Windows.
+
+def _find(vm: Any, xs: list, f: Any) -> Any:
+    for x in list(xs):
+        if vm.call_value(f, [x]):
+            return x
+    return None
+
+
+def _any(vm: Any, xs: list, f: Any) -> bool:
+    for x in list(xs):
+        if vm.call_value(f, [x]):
+            return True
+    return False
+
+
+def _all(vm: Any, xs: list, f: Any) -> bool:
+    for x in list(xs):
+        if not vm.call_value(f, [x]):
+            return False
+    return True
+
+
+def _each(vm: Any, xs: list, f: Any) -> None:
+    for x in list(xs):
+        vm.call_value(f, [x])
 
 
 def _reduce(vm: Any, xs: list, init: Any, f: Any) -> Any:
