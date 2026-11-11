@@ -374,5 +374,6 @@ There's no way to catch them yet *(not yet)*. Return an enum or an optional for 
 - Structs, lists and maps are shared references; numbers, strings and enum values behave like values.
 - `==` compares contents (lists, maps and structs included). There's no identity comparison *(not yet)*.
 - String length and indexing count characters (code points), not bytes.
+- A method call binds tighter than a minus sign, as in Rust: `-5.abs()` is `-(5.abs())`, which is -5. Write `(-5).abs()`.
 - Warnings don't stop a program: unused variables (name them `_x` to silence it), unused values, unreachable match arms, `??` on something that's never nil, and exact `Float` patterns.
 - In the REPL, redefining a name only affects code typed afterwards.

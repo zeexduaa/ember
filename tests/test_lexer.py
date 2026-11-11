@@ -79,3 +79,7 @@ def test_hints_for_other_languages_operators():
     with pytest.raises(EmberError) as exc:
         tokenize("a && b")
     assert exc.value.diagnostics[0].notes == ["use 'and'"]
+
+
+def test_float_literals_that_overflow_are_errors():
+    assert errors_of(tokenize, "1e400") == ["1e400 is too big for a Float"]

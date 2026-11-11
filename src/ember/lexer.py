@@ -194,7 +194,12 @@ class Lexer:
             self.errors.append(Diagnostic(f"invalid number {text[start:end]!r}", Span(start, end)))
             pos = end
         if is_float:
-            return Token("float", raw, float(clean), Span(start, pos)), pos
+            value = float(clean)
+            if value in (float("inf"), float("-inf")):
+                self.errors.append(Diagnostic(f"{raw} is too big for a Float", Span(start, pos),
+                                              notes=["the largest Float is about 1.8e308"]))
+                value = 0.0
+            return Token("float", raw, value, Span(start, pos)), pos
         return Token("int", raw, int(clean or "0"), Span(start, pos)), pos
 
     def _string(self, start: int) -> tuple[Token, int]:
