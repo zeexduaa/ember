@@ -20,6 +20,7 @@ import threading
 from typing import IO, Any
 
 from .builtins import BUILTIN_FUNCTIONS, method_impl
+from .source import Diagnostic
 from .bytecode import Op
 from .values import (Closure, EmberPanic, EnumType, EnumValue, FunctionProto, Module, NativeFn, StructType,
                      StructValue, Upvalue, check_int, format_value, int_div, int_mod)
@@ -34,14 +35,19 @@ _deep_stack = threading.local()
 class RuntimeFailure(Exception):
     """An ember program stopped with an error. ``trace`` is innermost call first."""
 
-    def __init__(self, message: str, trace: list[str]):
+    def __init__(self, message: str, trace: list[str], where: tuple[Any, Any] | None = None):
         super().__init__(message)
         self.message = message
         self.trace = trace
+        self.where = where      # (Source, Span) of the instruction that failed, if known
 
     def render(self, limit: int = 12) -> str:
         """Repeated frames are collapsed (deep recursion would print thousands), and long traces are cut."""
-        lines = [f"runtime error: {self.message}"]
+        if self.where is not None and self.where[0] is not None:
+            source, span = self.where
+            lines = [Diagnostic(self.message, span, kind="runtime error").render(source)]
+        else:
+            lines = [f"runtime error: {self.message}"]
         collapsed: list[str] = []
         trace = self.trace
         i = 0
@@ -146,7 +152,7 @@ class VM:
         try:
             return self._run(len(self.frames) - 1)
         except EmberPanic as exc:
-            raise RuntimeFailure(exc.message, exc.trace) from None
+            raise RuntimeFailure(exc.message, exc.trace, getattr(exc, "where", None)) from None
         except RecursionError:
             raise RuntimeFailure("stack overflow: callbacks (map, filter, sort_by...) nested too deeply", []) from None
         finally:
@@ -183,6 +189,16 @@ class VM:
         self.frames.append(frame)
         return frame
 
+    def _where(self) -> tuple[Any, Any] | None:
+        """The source and span of the instruction the innermost frame was running."""
+        if not self.frames:
+            return None
+        proto = self.frames[-1].proto
+        if not proto.spans:
+            return None
+        ip = max(0, min(self.frames[-1].ip - 1, len(proto.spans) - 1))
+        return proto.source, proto.spans[ip]
+
     def _trace(self) -> list[str]:
         trace = []
         for frame in reversed(self.frames):
@@ -201,11 +217,13 @@ class VM:
         except EmberPanic as exc:
             if not exc.trace:
                 exc.trace = self._trace()
+                exc.where = self._where()  # type: ignore[attr-defined]
             del self.frames[base:]
             raise
         except ZeroDivisionError:
             exc = EmberPanic("division by zero")
             exc.trace = self._trace()
+            exc.where = self._where()  # type: ignore[attr-defined]
             del self.frames[base:]
             raise exc from None
 

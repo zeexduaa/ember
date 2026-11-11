@@ -65,6 +65,8 @@ def method_key(t: StructT | EnumT, name: str) -> tuple[str, str]:
 class FunctionCompiler:
     def __init__(self, name: str, arity: int, parent: FunctionCompiler | None, module: str, source: Source):
         self.proto = FunctionProto(name, arity, module=module, source_name=source.name)
+        self.proto.source = source
+        self.span = Span(0, 0)
         self.parent = parent
         self.module = module
         self.source = source
@@ -82,9 +84,11 @@ class FunctionCompiler:
         at = len(self.proto.code)
         self.proto.code.append(int(op))
         self.proto.lines.append(self.line)
+        self.proto.spans.append(self.span)
         for arg in args:
             self.proto.code.append(arg)
             self.proto.lines.append(self.line)
+            self.proto.spans.append(self.span)
         return at
 
     def emit_jump(self, op: Op) -> int:
@@ -114,6 +118,7 @@ class FunctionCompiler:
 
     def at(self, span: Span) -> None:
         self.line = self.source.line_col(span.start)[0]
+        self.span = span
 
     # -- scopes and variables ---------------------------------------------------------------------
 
@@ -373,11 +378,13 @@ class Compiler:
             if op != "=":
                 fc.emit(Op.GET_LOCAL, container)
                 fc.emit(Op.GET_LOCAL, index)
+                fc.at(target.span)
                 fc.emit(Op.INDEX_GET)
                 self.expr(stmt.value)
                 self.arith(op[0], target.type, stmt.span)
             else:
                 self.expr(stmt.value)
+            fc.at(target.span)
             fc.emit(Op.INDEX_SET)
             self._release_temps(2)
         else:
@@ -474,6 +481,7 @@ class Compiler:
         elif isinstance(expr, A.Index):
             self.expr(expr.target)
             self.expr(expr.index)
+            fc.at(expr.span)        # a bad index points at the whole xs[i]
             fc.emit(Op.INDEX_GET)
         elif isinstance(expr, A.Field):
             self.field(expr)

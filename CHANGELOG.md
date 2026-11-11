@@ -22,6 +22,7 @@ The first version, so everything is new:
 - `Int` methods for overflow on purpose: `wrapping_*`, `saturating_*` and `checked_* -> Int?`.
 - Struct patterns in match: `Point { x: 0, y }` and `Point { y: 0, .. }`, nested and checked for exhaustiveness.
 - `if x != nil`, `x == nil` with an early return, and `and`/`or` chains narrow an optional `let` or parameter.
+- Runtime errors show the source line with the failing expression marked, like compile errors.
 
 ### Fixed before release
 

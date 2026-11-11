@@ -389,9 +389,13 @@ Some mistakes can only be caught while running: an index out of range, a missing
 
 ```text
 runtime error: index 5 is out of range for a list of length 2
-  at get (main.em:1)
-  at outer (main.em:2)
-  at <main> (main.em:3)
+ --> main.em:2:5
+  |
+2 |     xs[i] * 2
+  |     ^^^^^
+  at get (main.em:2)
+  at outer (main.em:4)
+  at <main> (main.em:5)
 ```
 
 There's no way to catch them yet *(not yet)*. Return an enum or an optional for failures the caller should handle, as [`examples/bank.em`](../examples/bank.em) does.

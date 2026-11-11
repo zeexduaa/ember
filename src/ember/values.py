@@ -35,6 +35,8 @@ class FunctionProto:
     arity: int
     code: list[Any] = field(default_factory=list)
     lines: list[int] = field(default_factory=list)       # source line for each instruction
+    spans: list[Any] = field(default_factory=list)       # the source Span each instruction came from
+    source: Any = None                                    # the Source, for showing runtime errors
     constants: list[Any] = field(default_factory=list)
     upvalues: list[tuple[bool, int]] = field(default_factory=list)   # (is_local, index) per captured variable
     max_locals: int = 0

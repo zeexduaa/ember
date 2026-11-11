@@ -354,7 +354,7 @@ def test_runaway_recursion_is_reported_compactly():
     err = failure("fn f(n: Int) -> Int { f(n + 1) }\nf(0)")
     assert "stack overflow" in err.message
     text = err.render()
-    assert "(and 1998 more times)" in text and len(text.splitlines()) == 3
+    assert "(and 1998 more times)" in text and len(text.splitlines()) == 7   # 4 of them show the source
 
 
 def test_errors_inside_callbacks_show_the_lambda():
@@ -414,7 +414,7 @@ print(depth(900))
     err = failure("fn d(n: Int) -> Int { [n].map(fn(x) { d(x + 1) })[0] }\nprint(d(0))")
     assert err.message.startswith("stack overflow: more than 2000 calls deep")
     shown = err.render()
-    assert "(these 2 lines repeat" in shown and len(shown.splitlines()) < 10
+    assert "(these 2 lines repeat" in shown and len(shown.splitlines()) < 14
 
 
 def test_interrupting_a_running_program():
@@ -521,3 +521,16 @@ fn glen() -> Int { if g != nil { g.len() } else { 0 } }
 print(first_word("hello there"), first_word(nil) == "", glen())
 """
     assert run(text) == "hello true 12\n"
+
+
+def test_runtime_errors_show_where_in_the_source():
+    err = failure("fn get(xs: List[Int], i: Int) -> Int {\n    xs[i] * 2\n}\nprint(get([1], 3))")
+    assert err.render().splitlines()[:5] == [
+        "runtime error: index 3 is out of range for a list of length 1",
+        " --> test.em:2:5",
+        "  |",
+        "2 |     xs[i] * 2",
+        "  |     ^^^^^",
+    ]
+    assert "  | ^^^^^^" in failure('var m = {"a": 1}\nm["b"] += 1').render()   # the whole m["b"]
+    assert "^^^^^^" in failure("print([1, 0].map(fn(x) { 10 / x }))").render().splitlines()[4]
