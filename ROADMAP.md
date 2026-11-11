@@ -9,7 +9,7 @@ Each item is (or will be) a GitHub issue. Please comment there before starting a
 - [ ] **Tuples**: `(Int, Str)` types, `(1, "a")` values, destructuring in `let` and patterns, and `for (i, x) in xs.enumerate()`. (L)
 - [ ] **Generic structs and enums**: `struct Pair[A, B] { first: A, second: B }`, `enum Tree[T] { Leaf, Node(Tree[T], T, Tree[T]) }`, with inference at construction. (XL)
 - [ ] **Traits / interfaces**: `trait Show { fn show(self) -> Str }`, `impl Show for Point`, and bounds on type parameters (`fn max_of[T: Ord](xs: List[T])`), so generic code can use `<`, `+` or methods. (XL)
-- [ ] **Flow-sensitive nil checks**: after `if x != nil { ... }` or an early `return` on nil, treat `x` as non-optional, as well as `if let`. (M)
+- [x] **Flow-sensitive nil checks**: after `if x != nil { ... }` or an early `return` on nil, treat `x` as non-optional, as well as `if let`. (M)
 - [x] **Type aliases**: `type Grid = List[List[Bool]]`. (S)
 - [x] **Range patterns and or-patterns**: `1..=9 => ...`, `"y" | "yes" => ...`. (M)
 - [ ] **Bindings in or-patterns and Int range exhaustiveness**: `Circle(r) | Ring(r, _) => ...`, and knowing that `..0 | 0 | 1..` covers every Int (needs open-ended ranges). (M)

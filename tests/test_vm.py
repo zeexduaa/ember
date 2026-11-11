@@ -508,3 +508,16 @@ let maybe: Point? = b
 print(match maybe { nil => "none", Point { x: 0, .. } => "x is zero", _ => "other" })
 """
     assert lines(text) == ["origin y axis at 5 x axis diagonal elsewhere", "dot on the y axis vertical", "x is zero"]
+
+
+def test_narrowed_optionals_run():
+    text = """
+fn first_word(s: Str?) -> Str {
+    if s == nil { return "" }
+    s.split(" ")[0]
+}
+let g: Str? = "global value"
+fn glen() -> Int { if g != nil { g.len() } else { 0 } }
+print(first_word("hello there"), first_word(nil) == "", glen())
+"""
+    assert run(text) == "hello true 12\n"

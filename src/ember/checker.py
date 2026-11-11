@@ -425,6 +425,7 @@ class Checker:
                         self.check_stmt(stmt)
                         if last and value and always_exits(stmt):
                             result = NEVER
+                        self.narrow_after(stmt)
                 except CheckError:
                     if last and value:
                         result = TypeVar()
@@ -432,6 +433,17 @@ class Checker:
         finally:
             self.scope = saved
         return result
+
+    def narrow_after(self, stmt: A.Stmt) -> None:
+        """After `if x == nil { return }` (an if without else whose block always exits),
+        x isn't nil for the rest of the block."""
+        if not (isinstance(stmt, A.ExprStmt) and isinstance(stmt.expr, A.IfExpr)):
+            return
+        branch = stmt.expr
+        if branch.let_name is not None or branch.else_ is not None or not always_exits_block(branch.then):
+            return
+        _, when_false = self.nil_facts(branch.cond)
+        self.scope.names.update(when_false)
 
     def report_unused(self, scope: Scope) -> None:
         for binding in scope.names.values():
@@ -844,7 +856,16 @@ class Checker:
         op = expr.op
         if op in ("and", "or"):
             self.expect(self.check_expr(expr.left, BOOL), BOOL, expr.left.span, f"'{op}'")
-            self.expect(self.check_expr(expr.right, BOOL), BOOL, expr.right.span, f"'{op}'")
+            # The right side only runs when the left was true (and) or false (or), so it knows more.
+            when_true, when_false = self.nil_facts(expr.left)
+            facts = when_true if op == "and" else when_false
+            saved = self.scope
+            if facts:
+                self.scope = self.scope_with(facts)
+            try:
+                self.expect(self.check_expr(expr.right, BOOL), BOOL, expr.right.span, f"'{op}'")
+            finally:
+                self.scope = saved
             return BOOL
         if op == "??":
             left = prune(self.check_expr(expr.left))
@@ -1149,6 +1170,50 @@ class Checker:
             self.error(f"the branches have different types: {resolve(a)} and {resolve(b)}", span)
         return a
 
+    # -- nil checks narrow optionals -------------------------------------------------------------
+
+    def nil_facts(self, cond: A.Expr) -> tuple[dict[str, Binding], dict[str, Binding]]:
+        """What a condition proves about optional names: (when it's true, when it's false).
+        `x != nil` proves x isn't nil when true; `x == nil` when false; `and`, `or` and `not` combine.
+        Only names that can't be reassigned (let bindings and parameters) are narrowed."""
+        if isinstance(cond, A.Unary) and cond.op == "not":
+            when_true, when_false = self.nil_facts(cond.operand)
+            return when_false, when_true
+        if isinstance(cond, A.Binary) and cond.op in ("and", "or"):
+            lt, lf = self.nil_facts(cond.left)
+            rt, rf = self.nil_facts(cond.right)
+            if cond.op == "and":
+                return {**lt, **rt}, {}
+            return {}, {**lf, **rf}
+        if isinstance(cond, A.Binary) and cond.op in ("==", "!="):
+            name = None
+            if isinstance(cond.left, A.Name) and isinstance(cond.right, A.NilLit):
+                name = cond.left
+            elif isinstance(cond.right, A.Name) and isinstance(cond.left, A.NilLit):
+                name = cond.right
+            if name is not None:
+                narrowed = self.narrowed(name.name)
+                if narrowed is not None:
+                    facts = {name.name: narrowed}
+                    return (facts, {}) if cond.op == "!=" else ({}, facts)
+        return {}, {}
+
+    def narrowed(self, name: str) -> Binding | None:
+        binding = self.scope.lookup(name)
+        if binding is None or binding.kind not in ("let", "param"):
+            return None
+        t = prune(binding.type)
+        if not isinstance(t, OptionT):
+            return None
+        copy = Binding(binding.name, t.inner, binding.kind, binding.span, mutable=False, global_=binding.global_,
+                       used=True, public=False)
+        return copy
+
+    def scope_with(self, facts: dict[str, Binding]) -> Scope:
+        scope = Scope(self.scope)
+        scope.names.update(facts)
+        return scope
+
     def check_if(self, expr: A.IfExpr, expected: Type | None, statement: bool) -> Type:
         saved = self.scope
         if expr.let_name is not None:
@@ -1162,8 +1227,13 @@ class Checker:
             self.scope = Scope(saved)
             b = self.define(expr.let_name, inner, "let", expr.let_span or expr.span)
             b.used = True
-        else:
+        when_true: dict[str, Binding] = {}
+        when_false: dict[str, Binding] = {}
+        if expr.let_name is None:
             self.expect(self.check_expr(expr.cond, BOOL), BOOL, expr.cond.span, "if condition")
+            when_true, when_false = self.nil_facts(expr.cond)
+            if when_true:
+                self.scope = self.scope_with(when_true)
         try:
             then_t = self.check_block(expr.then, expected, value=not statement)
         finally:
@@ -1174,11 +1244,17 @@ class Checker:
                 self.error("this if has no else, so it has no value when the condition is false", expr.span,
                            notes=["add an else branch"])
             return NIL if statement else self.join(then_t, NIL, expr.span)
-        if isinstance(expr.else_, A.IfExpr):
-            else_t = self.check_if(expr.else_, expected, statement)
-            expr.else_.type = else_t
-        else:
-            else_t = self.check_block(expr.else_, expected or (then_t if not statement else None), value=not statement)
+        if when_false:
+            self.scope = self.scope_with(when_false)
+        try:
+            if isinstance(expr.else_, A.IfExpr):
+                else_t = self.check_if(expr.else_, expected, statement)
+                expr.else_.type = else_t
+            else:
+                else_t = self.check_block(expr.else_, expected or (then_t if not statement else None),
+                                          value=not statement)
+        finally:
+            self.scope = saved
         return NIL if statement else self.join(then_t, else_t, expr.else_.span)
 
     def check_match(self, expr: A.MatchExpr, expected: Type | None, statement: bool) -> Type:

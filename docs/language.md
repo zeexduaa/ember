@@ -301,6 +301,18 @@ let text = match found {
 }
 ```
 
+A check against `nil` works too, for `let` bindings and parameters:
+
+```rust
+fn greet(name: Str?) -> Str {
+    if name == nil { return "hello, stranger" }
+    "hello, ${name.upper()}"          # name is a Str after the early return
+}
+fn positive(n: Int?) -> Bool { n != nil and n > 0 }
+```
+
+That covers `x != nil` (then the `if` block, or the right side of `and`), `x == nil` (the `else` block, or the right side of `or`), `not`, and an `if x == nil { ... }` whose block always returns or panics. A `var` isn't narrowed, because it could be set back to `nil` in between: copy it into a `let` first.
+
 `nil` fits anywhere a `T?` is expected, and so does a plain `T`. An optional can't be optional again (`Int??`).
 
 ## Generic functions

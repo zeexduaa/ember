@@ -319,3 +319,32 @@ def test_struct_pattern_errors_and_exhaustiveness():
     assert error(p + "fn f(n: Int) -> Int { match n { P { x, .. } => 1, _ => 2 } }") == \
         "'P { ... }' is a struct pattern, but the value is an Int"
     checked("struct Q { on: Bool }\nfn f(q: Q) -> Int { match q { Q { on: true } => 1, Q { on: false } => 2 } }")
+
+
+def test_nil_checks_narrow_optionals():
+    text = """
+fn describe(n: Int?) -> Str { if n != nil { "number ${n + 1}" } else { "nothing" } }
+fn first_word(s: Str?) -> Str {
+    if s == nil { return "" }
+    s.split(" ")[0]
+}
+fn both(a: Int?, b: Int?) -> Int {
+    if a != nil and b != nil { return a + b }
+    if a == nil or b == nil { return -1 }
+    a + b
+}
+fn big(n: Int?) -> Bool { n != nil and n > 10 }
+fn small(n: Int?) -> Bool { n == nil or n < 5 }
+fn flipped(n: Int?) -> Int { if not (n == nil) { n } else { 0 } }
+"""
+    checked(text)
+
+
+def test_vars_and_the_wrong_branch_are_not_narrowed():
+    # A var could be set back to nil, so it stays optional.
+    assert "'+' needs two values of the same type, found Int? and Int" in errors(
+        "fn f(n: Int?) -> Int { var m = n\nif m != nil { m + 1 } else { 0 } }")
+    assert "'+' needs two values of the same type, found Int? and Int" in errors(
+        "fn f(n: Int?) -> Int { if n != nil { return 1 }\nn + 1 }")
+    assert "'+' needs two values of the same type, found Int and Int?" in errors(
+        "fn f(n: Int?) -> Int { if n == nil { 0 } else { 1 } + n }")   # outside the if, n is optional again
