@@ -231,7 +231,7 @@ class Parser:
         return A.FnDecl(keyword.span.to(body.span), name.text, name.span, type_params, params, ret, body,
                         public, has_self)
 
-    def params(self, allow_self: bool = False) -> tuple[list[A.Param], bool]:
+    def params(self, allow_self: bool = False, allow_untyped: bool = False) -> tuple[list[A.Param], bool]:
         params: list[A.Param] = []
         has_self = False
         while not self.at(")"):
@@ -244,12 +244,14 @@ class Parser:
                 has_self = True
             else:
                 name = self.expect("ident", "a parameter name")
-                if not self.accept(":"):
+                type_expr = None
+                if self.accept(":"):
+                    type_expr = self.type_expr()
+                elif not allow_untyped:
                     raise ParseError(f"parameter '{name.text}' needs a type, e.g. {name.text}: Int", self.tok.span)
-                type_expr = self.type_expr()
                 if any(p.name == name.text for p in params):
                     raise ParseError(f"two parameters are named '{name.text}'", name.span)
-                params.append(A.Param(name.text, type_expr, name.span.to(type_expr.span)))
+                params.append(A.Param(name.text, type_expr, name.span.to(type_expr.span) if type_expr else name.span))
             if not self.accept(","):
                 break
         self.expect(")", "')' after the parameters")
@@ -590,7 +592,7 @@ class Parser:
     def lambda_expr(self) -> A.Lambda:
         keyword = self.expect("fn")
         self.expect("(", "'(' (a function value looks like fn(x: Int) -> Int { x + 1 })")
-        params, _ = self.params()
+        params, _ = self.params(allow_untyped=True)   # types can come from where the function is used
         ret = self.type_expr() if self.accept("->") else None
         saved = self.no_struct
         self.no_struct = False
