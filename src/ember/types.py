@@ -150,6 +150,7 @@ class ModuleT(Type):
         self.name = name
         self.path = path
         self.members: dict[str, Any] = {}    # name -> Binding
+        self.broken = False                  # the import failed; uses are silently skipped
 
     def __str__(self) -> str:
         return f"module {self.name}"

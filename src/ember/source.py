@@ -74,13 +74,21 @@ class Diagnostic:
 class EmberError(Exception):
     """One or more diagnostics from the lexer, parser or checker."""
 
-    def __init__(self, diagnostics: list[Diagnostic], source: Source | None = None):
+    def __init__(self, diagnostics: list[Diagnostic], source: Source | None = None,
+                 related: list[EmberError] | None = None):
         self.diagnostics = diagnostics
         self.source = source
+        self.related = related or []      # errors from imported files, shown first
         super().__init__(diagnostics[0].message if diagnostics else "error")
 
+    def all_diagnostics(self) -> list[Diagnostic]:
+        found = [d for r in self.related for d in r.all_diagnostics()]
+        return found + self.diagnostics
+
     def render(self) -> str:
-        return "\n\n".join(d.render(self.source) for d in self.diagnostics)
+        parts = [r.render() for r in self.related]
+        parts += [d.render(self.source) for d in self.diagnostics]
+        return "\n\n".join(parts)
 
 
 def render(diagnostics: list[Diagnostic], source: Source | None) -> str:

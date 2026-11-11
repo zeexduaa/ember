@@ -86,7 +86,7 @@ class CheckError(Exception):
 
 class Checker:
     def __init__(self, source: Source, module_name: str = "main",
-                 import_module: Callable[[str, Span], ModuleT] | None = None):
+                 import_module: Callable[[A.Import], ModuleT] | None = None, repl: bool = False):
         self.source = source
         self.module_name = module_name
         self.import_module = import_module
@@ -96,6 +96,8 @@ class Checker:
         self.scope = self.globals
         self.fn: FnContext | None = None
         self.pending_vars: list[tuple[TypeVar, Span, str]] = []   # empty literals waiting for a type
+        self.repl = repl          # the REPL may redefine top-level names
+        self.imported_errors: list[EmberError] = []
         self._owner_ids = iter(range(1, 10 ** 9))
         for name, spec in BUILTIN_FUNCTIONS.items():
             self.globals.names[name] = Binding(name, spec.type or FnT((), NIL), "builtin", None, global_=True, extra=spec)
@@ -139,6 +141,10 @@ class Checker:
 
     # -- entry point ------------------------------------------------------------------------
 
+    def public_members(self) -> dict[str, Binding]:
+        """What other files see after `import`: the top-level declarations marked pub."""
+        return {name: b for name, b in self.globals.names.items() if b.public and b.kind != "builtin"}
+
     def check_program(self, program: A.Program) -> None:
         deferred: list[tuple[A.FnDecl, Scope]] = []
         self.declare_types(program.stmts)
@@ -179,7 +185,8 @@ class Checker:
                 self.declare_import(stmt)
         for stmt in stmts:
             if isinstance(stmt, (A.StructDecl, A.EnumDecl)):
-                if self.globals.names.get(stmt.name) and self.globals.names[stmt.name].kind != "builtin":
+                if self.globals.names.get(stmt.name) and self.globals.names[stmt.name].kind != "builtin" \
+                        and not self.repl:
                     self.error(f"'{stmt.name}' is already defined", stmt.name_span)
                     continue
                 if not stmt.name[0].isupper():
@@ -209,8 +216,21 @@ class Checker:
             self.error("imports only work when running a file (ember run file.em)", stmt.path_span)
             return
         try:
-            module = self.import_module(stmt.path, stmt.path_span)
+            module = self.import_module(stmt)
         except CheckError:
+            self._define_broken_module(stmt)
+            return
+        except EmberError as exc:
+            self._define_broken_module(stmt)
+            if exc.source is None:
+                # A problem with the import itself (not found, a cycle): report it at the import.
+                for d in exc.diagnostics:
+                    self.errors.append(Diagnostic(d.message, d.span or stmt.path_span, notes=d.notes))
+                return
+            # Errors inside the imported file are shown as they are (pointing into that file).
+            self.errors.append(Diagnostic(f"can't import \"{stmt.path}\" because of the errors above",
+                                          stmt.path_span))
+            self.imported_errors.append(exc)
             return
         if stmt.alias in self.globals.names and self.globals.names[stmt.alias].kind != "builtin":
             self.error(f"'{stmt.alias}' is already defined; import it with another name: import \"{stmt.path}\" as other",
@@ -218,6 +238,14 @@ class Checker:
             return
         self.globals.names[stmt.alias] = Binding(stmt.alias, module, "module", stmt.path_span, global_=True,
                                                  extra=module)
+
+    def _define_broken_module(self, stmt: A.Import) -> None:
+        """After a failed import, the name still exists, so its uses don't each add an error."""
+        if stmt.alias not in self.globals.names:
+            module = ModuleT(stmt.alias, stmt.path)
+            module.broken = True
+            self.globals.names[stmt.alias] = Binding(stmt.alias, module, "module", stmt.path_span, global_=True,
+                                                     used=True, extra=module)
 
     def function_type(self, decl: A.FnDecl, self_type: Type | None = None) -> tuple[FnT, list[TypeParam]]:
         owner = next(self._owner_ids)
@@ -249,7 +277,7 @@ class Checker:
     def declare_function(self, decl: A.FnDecl, scope: Scope, global_: bool = False) -> Binding:
         fn_type, type_params = self.function_type(decl)
         existing = scope.names.get(decl.name)
-        if existing is not None and existing.kind != "builtin":
+        if existing is not None and existing.kind != "builtin" and not (self.repl and scope is self.globals):
             self.error(f"'{decl.name}' is already defined in this scope", decl.name_span)
         binding = Binding(decl.name, fn_type, "function", decl.name_span, global_=global_,
                           type_params=type_params, public=decl.public)
@@ -315,6 +343,8 @@ class Checker:
             binding = self.scope.lookup(module_name)
             if binding is None or binding.kind != "module":
                 raise self.fail(f"unknown module '{module_name}'", texpr.span)
+            if binding.extra.broken:
+                raise CheckError()
             target = binding.extra.members.get(member)
             if target is None or target.kind not in ("struct", "enum"):
                 raise self.fail(f"module {module_name} has no public type '{member}'", texpr.span)
@@ -364,7 +394,7 @@ class Checker:
 
     def define(self, name: str, t: Type, kind: str, span: Span, mutable: bool = False, public: bool = False) -> Binding:
         existing = self.scope.names.get(name)
-        if existing is not None and existing.kind not in ("builtin",):
+        if existing is not None and existing.kind not in ("builtin",) and not (self.repl and self.scope is self.globals):
             self.error(f"'{name}' is already defined in this scope", span,
                        notes=["use a different name, or assign to the existing variable if it's a var"])
         binding = Binding(name, t, kind, span, mutable=mutable, global_=self.scope is self.globals, public=public)
@@ -744,6 +774,8 @@ class Checker:
             binding = self.scope.lookup(path.target.name)
             if binding is not None and binding.kind == "module":
                 binding.used = True
+                if binding.extra.broken:
+                    raise CheckError()
                 member = binding.extra.members.get(path.name)
                 if member is not None and member.kind in ("struct", "enum"):
                     path.kind, path.extra = "module", member
@@ -954,6 +986,8 @@ class Checker:
         if isinstance(target, A.Field) and isinstance(target.target, A.Name):
             binding = self.scope.lookup(target.target.name)
             if binding is not None and binding.kind == "module":
+                if binding.extra.broken:
+                    raise CheckError()
                 member = binding.extra.members.get(target.name)
                 if member is not None and member.kind in ("struct", "enum"):
                     binding.used = True
@@ -986,6 +1020,8 @@ class Checker:
             if binding is not None and binding.kind == "module":
                 binding.used = True
                 target.binding = binding
+                if binding.extra.broken:
+                    raise CheckError()
                 member = binding.extra.members.get(expr.name)
                 if member is None:
                     raise self.fail(f"module {target.name} has no public member '{expr.name}'", expr.name_span,
@@ -1301,7 +1337,7 @@ def describe_callee(expr: A.Expr) -> str:
 
 
 def check(program: A.Program, source: Source, module_name: str = "main",
-          import_module: Callable[[str, Span], ModuleT] | None = None) -> Checker:
+          import_module: Callable[[A.Import], ModuleT] | None = None) -> Checker:
     """Type-checks a program. Raises EmberError listing every error; returns the checker
     (with ``warnings`` and ``globals``) if there are none."""
     checker = Checker(source, module_name, import_module)

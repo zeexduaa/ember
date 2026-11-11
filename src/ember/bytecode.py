@@ -84,6 +84,7 @@ class Op(IntEnum):
     DEFINE_METHOD = 62         # k            pops a closure
     MODULE_GET = 63            # k (name)     pops a module, pushes one of its globals
     MATCH_FAIL = 64
+    IMPORT = 65                # k (module id)  runs the module the first time, pushes it
 
 
 OPERANDS = {
@@ -93,10 +94,11 @@ OPERANDS = {
     Op.CALL: 1, Op.CALL_BUILTIN: 2, Op.CALL_METHOD: 2, Op.CLOSURE: 1, Op.BUILD_LIST: 1, Op.BUILD_MAP: 1,
     Op.BUILD_STR: 1, Op.RANGE: 1, Op.GET_FIELD: 1, Op.SET_FIELD: 1, Op.MAKE_STRUCT: 2, Op.MAKE_VARIANT: 3,
     Op.TEST_VARIANT: 1, Op.GET_PAYLOAD: 1, Op.FOR_ITER: 1, Op.GET_METHOD: 1, Op.DEFINE_METHOD: 1,
-    Op.MODULE_GET: 1,
+    Op.MODULE_GET: 1, Op.IMPORT: 1,
 }
 CONSTANT_OPERAND = {Op.CONST, Op.GET_GLOBAL, Op.SET_GLOBAL, Op.DEFINE_GLOBAL, Op.CALL_BUILTIN, Op.CALL_METHOD,
-                    Op.CLOSURE, Op.MAKE_STRUCT, Op.MAKE_VARIANT, Op.GET_METHOD, Op.DEFINE_METHOD, Op.MODULE_GET}
+                    Op.CLOSURE, Op.MAKE_STRUCT, Op.MAKE_VARIANT, Op.GET_METHOD, Op.DEFINE_METHOD, Op.MODULE_GET,
+                    Op.IMPORT}
 
 
 def show_constant(value: Any) -> str:

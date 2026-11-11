@@ -185,9 +185,15 @@ class Compiler:
 
     # -- entry ------------------------------------------------------------------------------------
 
-    def compile_program(self, program: A.Program) -> FunctionProto:
+    def compile_program(self, program: A.Program, return_last: bool = False) -> FunctionProto:
+        """``return_last`` (for the REPL): a final expression statement's value is returned instead of dropped."""
         fc = self.fc
-        # Top-level functions and methods exist before any statement runs (they can be used anywhere).
+        # Imports run first, then top-level functions and methods are defined, so both can be used anywhere.
+        for stmt in program.stmts:
+            if isinstance(stmt, A.Import):
+                fc.at(stmt.span)
+                fc.emit(Op.IMPORT, fc.constant(stmt.module_id))
+                fc.emit(Op.DEFINE_GLOBAL, fc.constant(stmt.alias))
         for stmt in program.stmts:
             if isinstance(stmt, A.FnDecl):
                 proto = self.compile_function(stmt.name, stmt.params, stmt.body, stmt, has_self=False,
@@ -203,13 +209,16 @@ class Compiler:
                     fc.at(method.span)
                     fc.emit(Op.CLOSURE, fc.constant(proto))
                     fc.emit(Op.DEFINE_METHOD, fc.constant(method_key(target, method.name)))
-        for stmt in program.stmts:
-            if not isinstance(stmt, (A.FnDecl, A.ImplDecl, A.StructDecl, A.EnumDecl, A.Import)):
-                self.stmt(stmt)
-            elif isinstance(stmt, A.Import):
+        body = [s for s in program.stmts
+                if not isinstance(s, (A.FnDecl, A.ImplDecl, A.StructDecl, A.EnumDecl, A.Import))]
+        for i, stmt in enumerate(body):
+            if return_last and i == len(body) - 1 and isinstance(stmt, A.ExprStmt) and \
+                    not self._valueless_if(stmt.expr) and str(prune(stmt.expr.type)) not in ("Nil", "Never"):
                 fc.at(stmt.span)
-                fc.emit(Op.CONST, fc.constant(("module", stmt.path)))
-                fc.emit(Op.DEFINE_GLOBAL, fc.constant(stmt.alias))
+                self.expr(stmt.expr)
+                fc.emit(Op.RETURN)
+                return fc.proto
+            self.stmt(stmt)
         fc.emit(Op.NIL)
         fc.emit(Op.RETURN)
         return fc.proto
@@ -686,5 +695,6 @@ class Compiler:
             self.pattern(sub, inner, fails)
 
 
-def compile_program(program: A.Program, source: Source, module: str = "main") -> FunctionProto:
-    return Compiler(source, module).compile_program(program)
+def compile_program(program: A.Program, source: Source, module: str = "main",
+                    return_last: bool = False) -> FunctionProto:
+    return Compiler(source, module).compile_program(program, return_last)

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import math
 import sys
-from typing import IO, Any, Callable
+from typing import IO, Any
 
 from .builtins import BUILTIN_FUNCTIONS, method_impl
 from .bytecode import Op
@@ -79,13 +79,13 @@ class VM:
         self.modules: dict[str, Module] = {}
         self.builtins: dict[str, NativeFn] = {
             name: NativeFn(name, spec.impl, None) for name, spec in BUILTIN_FUNCTIONS.items()}
-        self.instructions = 0
-        self.module_loader: Callable[[str], Module] | None = None
+        self.module_protos: dict[str, FunctionProto] = {}   # compiled modules, by id, run on first import
 
     # -- entry points ---------------------------------------------------------------------------------
 
     def run_main(self, proto: FunctionProto, globals_: dict[str, Any] | None = None) -> Any:
         globals_ = {} if globals_ is None else globals_
+        self.modules.setdefault(proto.module, Module(proto.module, globals_))
         closure = Closure(proto, [])
         self.frames.append(Frame(closure, [], globals_))
         try:
@@ -96,6 +96,20 @@ class VM:
             raise RuntimeFailure("stack overflow (too much recursion through built-in methods)", []) from None
         finally:
             self.frames.clear()
+
+    def import_module(self, module_id: str) -> Module:
+        """Runs a module's top level the first time it's imported; afterwards returns the same module."""
+        module = self.modules.get(module_id)
+        if module is not None:
+            return module
+        proto = self.module_protos.get(module_id)
+        if proto is None:
+            raise EmberPanic(f"module {module_id} wasn't compiled")
+        module = Module(module_id, {})
+        self.modules[module_id] = module
+        self._push_frame(Closure(proto, []), [], module.globals)
+        self._run(len(self.frames) - 1)
+        return module
 
     def call_value(self, fn: Any, args: list[Any]) -> Any:
         """Calls an ember function from Python (used by map, filter, sort_by...)."""
@@ -491,6 +505,10 @@ class VM:
         if op == O.MODULE_GET:
             module = pop()
             push(module.globals[constants[code[ip + 1]]])
+            return ip + 2
+        if op == O.IMPORT:
+            frame.ip = ip + 2
+            push(self.import_module(constants[code[ip + 1]]))
             return ip + 2
         if op == O.MATCH_FAIL:
             frame.ip = ip + 1

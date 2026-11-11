@@ -340,6 +340,9 @@ class Import(Stmt):
     alias: str
     path_span: Span
 
+    def __post_init__(self) -> None:
+        self.module_id: str = ""     # set by the module loader: which file this resolved to
+
 
 @dataclass
 class Program:
