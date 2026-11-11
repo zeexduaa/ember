@@ -366,3 +366,8 @@ def test_disassembler_lists_nested_functions():
     listing = dis_source("fn add(a: Int, b: Int) -> Int { a + b }\nprint(add(1, 2))")
     assert "== <main>" in listing and "== add (arity 2, 2 locals) ==" in listing
     assert "IADD" in listing and "CALL_BUILTIN" in listing
+
+
+@pytest.mark.parametrize("expr", ["m / -1", "m.abs()", "-m", "m % -1", "[9223372036854775807, 1].sum()", "2.pow(63)"])
+def test_every_overflow_is_caught(expr):
+    assert failure(f"let m = -9223372036854775807 - 1\nprint({expr})").message == "integer overflow (Int is 64-bit)"

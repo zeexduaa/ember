@@ -246,3 +246,9 @@ def test_exhaustiveness_terminates_on_recursive_enums():
         "this match doesn't cover every case: E.Add(E.Num(another Int), _) isn't handled"
     message = error(enum + "fn f(e: E) -> Int { match e { Num(n) => n, Add(_, _) => 1 } }")
     assert message == "this match doesn't cover every case: E.Neg(_) isn't handled"
+
+
+def test_operator_on_an_optional_suggests_unwrapping():
+    with pytest.raises(EmberError) as exc:
+        checked('fn f(n: Int?) -> Int { n + 1 }')
+    assert exc.value.diagnostics[0].notes == ["one side might be nil; unwrap it first with `if let`, `??` or `match`"]

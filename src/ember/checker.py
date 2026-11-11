@@ -1315,6 +1315,8 @@ def last_span(block: A.Block) -> Span:
 
 
 def mixed_note(a: Type, b: Type) -> list[str]:
+    if isinstance(a, OptionT) or isinstance(b, OptionT):
+        return ["one side might be nil; unwrap it first with `if let`, `??` or `match`"]
     if {a, b} == {INT, FLOAT}:
         return ["convert the Int with float(...) first"]
     if STR in (a, b) and (a in (INT, FLOAT) or b in (INT, FLOAT)):
