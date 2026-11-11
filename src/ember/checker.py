@@ -31,7 +31,7 @@ from .builtins import BUILTIN_FUNCTIONS, builtin_method
 from .source import Diagnostic, EmberError, Source, Span
 from .types import (BOOL, FLOAT, INT, NEVER, NIL, PRIMS, RANGE, STR, EnumT, FnT, ListT, MapT, Method, ModuleT,
                     OptionT, Prim, StructT, Type, TypeParam, TypeVar, has_unknowns, is_comparable, is_hashable,
-                    is_numeric, prune, resolve, substitute, unify)
+                    is_numeric, occurs, prune, resolve, substitute, unify)
 
 INT_MIN, INT_MAX = -(2 ** 63), 2 ** 63 - 1
 
@@ -119,6 +119,11 @@ class Checker:
         Nil and T both fit T?."""
         if not self.fits(actual, expected):
             exp, act = resolve(expected), resolve(actual)
+            pe, pa = prune(expected), prune(actual)
+            if (isinstance(pe, TypeVar) and occurs(pe, pa)) or (isinstance(pa, TypeVar) and occurs(pa, pe)):
+                self.error("a value can't contain itself (its type would never end)", span,
+                           notes=["e.g. a list pushed into itself; use a struct to build recursive data"])
+                return
             notes = []
             if prune(exp) == FLOAT and prune(act) == INT:
                 notes.append("convert with float(...), or write the number with a decimal point (1.0)")
@@ -137,6 +142,9 @@ class Checker:
             return True
         if isinstance(expected, OptionT) and not isinstance(actual, (OptionT, TypeVar)):
             return actual == NIL or self.fits(actual, expected.inner)
+        if actual == NIL and isinstance(expected, TypeVar):
+            # nil arriving where the type isn't known yet (xs.push(nil) on an empty list): it's optional.
+            return unify(expected, OptionT(TypeVar()))
         return unify(actual, expected)
 
     # -- entry point ------------------------------------------------------------------------
@@ -602,7 +610,12 @@ class Checker:
             else:
                 raise self.fail(f"can't tell the type of parameter '{p.name}'", p.span,
                                 notes=[f"write it: fn({p.name}: Int) ..."])
-        ret = self.resolve_type(lam.ret) if lam.ret else TypeVar()
+        if lam.ret is not None:
+            ret = self.resolve_type(lam.ret)
+        elif hint is not None and not has_unknowns(hint.ret):
+            ret = hint.ret      # the context says what it returns, e.g. a field of type fn() -> Int?
+        else:
+            ret = TypeVar()
         saved_scope, saved_fn = self.scope, self.fn
         self.scope = Scope(saved_scope, "function")
         for p, t in zip(lam.params, params):
@@ -614,9 +627,9 @@ class Checker:
         finally:
             self.scope, self.fn = saved_scope, saved_fn
         result = FnT(tuple(params), ret)
-        if hint is not None:
+        if hint is not None and ret is not hint.ret:
             # Let the expected type (e.g. map's fn(T) -> U) learn the result type.
-            unify(hint.ret, ret) if not isinstance(prune(hint.ret), OptionT) else self.fits(ret, hint.ret)
+            unify(hint.ret, ret)
         return result
 
     # -- expressions -------------------------------------------------------------------------------

@@ -252,3 +252,17 @@ def test_operator_on_an_optional_suggests_unwrapping():
     with pytest.raises(EmberError) as exc:
         checked('fn f(n: Int?) -> Int { n + 1 }')
     assert exc.value.diagnostics[0].notes == ["one side might be nil; unwrap it first with `if let`, `??` or `match`"]
+
+
+def test_nil_into_an_unknown_type_makes_it_optional():
+    assert type_of("var xs = []\nxs.push(nil)\nxs.push(1)", "xs") == "List[Int?]"
+
+
+def test_lambdas_take_their_return_type_from_the_context():
+    text = "struct S { cb: fn() -> Int? }\nlet s = S { cb: fn() { nil } }\nlet f: fn(Int) -> Int? = fn(n) { n }"
+    checked(text)
+    assert type_of("let v = [1, 2].map(fn(x) { if x > 1 { x } else { nil } })", "v") == "List[Int?]"
+
+
+def test_a_value_cant_contain_itself():
+    assert "a value can't contain itself (its type would never end)" in errors("var xs = []\nxs.push(xs)")
