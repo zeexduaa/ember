@@ -441,3 +441,15 @@ print(max.checked_add(1), 5.checked_add(1), 7.checked_div(0), min.checked_div(-1
 print(max.saturating_add(10) == max, min.saturating_sub(1) == min, 3.saturating_mul(4))
 """
     assert lines(text) == ["true true -2", "nil 6 nil nil -3", "true true 12"]
+
+
+def test_same_compares_identity():
+    text = """
+struct Acct { balance: Int }
+let a = Acct { balance: 5 }
+let b = a
+let c = Acct { balance: 5 }
+let xs = [1]
+print(a == c, same(a, b), same(a, c), same(xs, xs), same(xs, [1]))
+"""
+    assert run(text) == "true true false true false\n"

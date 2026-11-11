@@ -18,7 +18,7 @@ Each item is (or will be) a GitHub issue. Please comment there before starting a
 ## v0.3: errors and the runtime
 
 - [ ] **Recoverable errors**: a `Result[T, E]`-style built-in enum with a `?` operator to pass failures up, or `try`/`catch` for runtime errors. Needs generic enums first. (L)
-- [ ] **Identity comparison**: `same(a, b)` for structs, lists and maps, alongside content `==`. (S)
+- [x] **Identity comparison**: `same(a, b)` for structs, lists and maps, alongside content `==`. (S)
 - [ ] **Better runtime error locations**: point at the column (not just the line) and show the source line, as compile errors do. (M)
 - [x] **Wrapping and checked arithmetic**: overflow is always an error today; add `a.wrapping_add(b)`, `a.checked_mul(b) -> Int?` and friends for code that wants something else. (S)
 - [ ] **Deep recursion in built-in callbacks**: a callback that recurses very deeply through `map` can hit Python's recursion limit before ember's own. (M)

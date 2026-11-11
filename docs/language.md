@@ -235,7 +235,7 @@ print(acct)                          # Account { owner: "Ada", balance: 50 }
 
 Every field must be given in a struct literal. Fields are always changeable, even through a `let` (which only stops the variable from pointing at another struct).
 
-Structs are shared, not copied: after `let b = acct`, `b` and `acct` are the same account. `==` compares contents, so two separate structs with equal fields are `==`.
+Structs are shared, not copied: after `let b = acct`, `b` and `acct` are the same account. `==` compares contents, so two separate structs with equal fields are `==`; `same(b, acct)` tells them apart.
 
 Inside an `if`, `while`, `for` or `match` head, a struct literal needs parentheses: `if p == (Point { x: 0.0, y: 0.0 }) { ... }`. Otherwise the `{` would start the block, as in Rust.
 
@@ -364,6 +364,7 @@ A file of yours with the same name takes precedence over the standard library's.
 | `sqrt(x)`, `pow(a, b)` | `Float` |
 | `min(a, b)`, `max(a, b)` | two Ints, Floats or Strs |
 | `assert(cond, message?)` | stops the program if cond is false |
+| `same(a, b) -> Bool` | true if a and b are the same struct, list or map, not just equal ones |
 | `panic(message)` | stops the program; fits wherever any value is expected |
 | `clock() -> Float` | seconds, for timing |
 
@@ -383,7 +384,7 @@ There's no way to catch them yet *(not yet)*. Return an enum or an optional for 
 ## Things to know
 
 - Structs, lists and maps are shared references; numbers, strings and enum values behave like values.
-- `==` compares contents (lists, maps and structs included). There's no identity comparison *(not yet)*.
+- `==` compares contents (lists, maps and structs included). `same(a, b)` asks whether they're the very same object.
 - String length and indexing count characters (code points), not bytes.
 - A method call binds tighter than a minus sign, as in Rust: `-5.abs()` is `-(5.abs())`, which is -5. Write `(-5).abs()`.
 - Warnings don't stop a program: unused variables (name them `_x` to silence it), unused values, unreachable match arms, `??` on something that's never nil, and exact `Float` patterns.

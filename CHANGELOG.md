@@ -17,6 +17,7 @@ The first version, so everything is new:
 ### Added since
 
 - Type aliases: `type Grid = List[List[Bool]]`.
+- `same(a, b)`: is it the same struct, list or map (not just an equal one)?
 - `Int` methods for overflow on purpose: `wrapping_*`, `saturating_*` and `checked_* -> Int?`.
 
 ### Fixed before release

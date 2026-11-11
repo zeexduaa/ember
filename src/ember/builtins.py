@@ -149,8 +149,21 @@ def _check_assert(checker: "Checker", call: A.Call) -> Type:
     return NIL
 
 
+def _check_same(checker: "Checker", call: A.Call) -> Type:
+    from .types import StructT
+    if len(call.args) != 2:
+        raise checker.fail(f"'same' takes 2 arguments, but {len(call.args)} were given", call.span)
+    a = checker.check_expr(call.args[0])
+    b = checker.check_expr(call.args[1], a)
+    checker.expect(b, a, call.args[1].span, "'same'")
+    if not isinstance(prune(a), (StructT, ListT, MapT, TypeVar)):
+        checker.error(f"same() asks if two names refer to one struct, list or map; for {resolve(a)} use ==",
+                      call.args[0].span)
+    return BOOL
+
+
 SPECIAL_CHECKS = {"print": _check_print, "str": _check_str, "min": _check_min_max, "max": _check_min_max,
-                  "assert": _check_assert}
+                  "assert": _check_assert, "same": _check_same}
 
 
 def _fn(*params: Type, ret: Type) -> FnT:
@@ -165,6 +178,9 @@ BUILTIN_FUNCTIONS: dict[str, FunctionSpec] = {s.name: s for s in [
     FunctionSpec("min", None, _min, "min(a, b): the smaller of two Ints, Floats or Strs", special=True),
     FunctionSpec("max", None, _max, "max(a, b): the larger of two Ints, Floats or Strs", special=True),
     FunctionSpec("assert", None, _assert, "assert(cond, message?): stops the program if cond is false",
+                 special=True),
+    FunctionSpec("same", None, lambda vm, a, b: a is b,
+                 "same(a, b) -> Bool: true if a and b are the same struct, list or map (not just equal)",
                  special=True),
     FunctionSpec("input", _fn(STR, ret=OptionT(STR)), _input, "input(prompt) -> Str?: a line from the keyboard, nil at end of input"),
     FunctionSpec("int", _fn(FLOAT, ret=INT), _int, "int(x: Float) -> Int: drops the fraction (toward zero)"),

@@ -283,3 +283,7 @@ let type = 1
     assert [type_of(text, n) for n in ("g", "s", "p", "type")] == ["List[List[Bool]]", "Map[Str, Int]", "Point", "Int"]
     assert error("type A = B\ntype B = A") == "type alias 'A' refers to itself"
     assert error("type G = List[Int]\nlet g = G") == "'G' is a type, not a value"
+
+
+def test_same_is_for_reference_types():
+    assert error("let v = same(1, 1)") == "same() asks if two names refer to one struct, list or map; for Int use =="
