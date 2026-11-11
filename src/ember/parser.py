@@ -428,6 +428,9 @@ class Parser:
         left = self.prefix()
         while True:
             op = self.tok.kind
+            if op in ("|", "||"):
+                raise ParseError(f"'{op}' isn't an operator in ember; use 'or'", self.tok.span,
+                                 notes=["| only separates alternatives in a match pattern: 1 | 2 => ..."])
             prec = BINARY_PRECEDENCE.get(op)
             if prec is None or prec < min_prec:
                 return left
@@ -605,6 +608,15 @@ class Parser:
         end = self.expect("}")
         return A.MapLit(start.span.to(end.span), entries)
 
+    def literal_pattern_value(self) -> A.Expr:
+        start = self.tok
+        negative = bool(self.accept("-"))
+        lit = self.primary()
+        if negative:
+            lit = (A.IntLit(start.span.to(lit.span), -lit.value) if isinstance(lit, A.IntLit)
+                   else A.FloatLit(start.span.to(lit.span), -lit.value))
+        return lit
+
     def lambda_expr(self) -> A.Lambda:
         keyword = self.expect("fn")
         self.expect("(", "'(' (a function value looks like fn(x: Int) -> Int { x + 1 })")
@@ -663,17 +675,31 @@ class Parser:
         return A.MatchExpr(keyword.span.to(end.span), subject, arms)
 
     def pattern(self) -> A.Pattern:
+        """A pattern, or several separated by | (any of them may match)."""
+        first = self.single_pattern()
+        if not self.at("|"):
+            return first
+        options = [first]
+        while self.accept("|"):
+            options.append(self.single_pattern())
+        return A.OrPat(first.span.to(options[-1].span), options)
+
+    def single_pattern(self) -> A.Pattern:
         tok = self.tok
         if tok.kind == "ident" and tok.text == "_":
             self.advance()
             return A.WildcardPat(tok.span)
         if tok.kind in ("int", "float", "str", "true", "false", "nil") or (
                 tok.kind == "-" and self.peek().kind in ("int", "float")):
-            negative = bool(self.accept("-"))
-            lit = self.primary()
-            if negative:
-                lit = (A.IntLit(tok.span.to(lit.span), -lit.value) if isinstance(lit, A.IntLit)
-                       else A.FloatLit(tok.span.to(lit.span), -lit.value))
+            lit = self.literal_pattern_value()
+            if self.at("..", "..="):                       # a range: 1..=9
+                inclusive = self.advance().kind == "..="
+                if not isinstance(lit, A.IntLit):
+                    raise ParseError("range patterns work on Ints, e.g. 1..=9", lit.span)
+                if not (self.at("int") or (self.at("-") and self.peek().kind == "int")):
+                    raise ParseError(f"expected the end of the range, found {self.describe(self.tok)}", self.tok.span)
+                end = self.literal_pattern_value()
+                return A.RangePat(tok.span.to(end.span), lit.value, end.value, inclusive)
             return A.LitPat(tok.span.to(lit.span), lit)
         if tok.kind == "ident":
             self.advance()

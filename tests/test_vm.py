@@ -453,3 +453,24 @@ let xs = [1]
 print(a == c, same(a, b), same(a, c), same(xs, xs), same(xs, [1]))
 """
     assert run(text) == "true true false true false\n"
+
+
+def test_range_and_or_patterns():
+    text = """
+fn grade(n: Int) -> Str {
+    match n {
+        90..=100 => "A"
+        80..90 => "B"
+        0 | 1 | 2 => "low"
+        -100..0 => "negative"
+        _ => "other"
+    }
+}
+enum Light { Red, Yellow, Green }
+enum E { A(Int), B }
+let maybe: Int? = nil
+print([95, 90, 89, 80, 1, -5, 79, 100, 101].map(grade))
+print(match "Yes".lower() { "y" | "yes" => true, _ => false }, match Light.Yellow { Red | Yellow => 1, Green => 2 })
+print(match maybe { 1..=5 => "small", nil => "none", _ => "big" }, match E.A(3) { A(1..=5) | B => "hit", A(_) => "miss" })
+"""
+    assert lines(text) == ['["A", "A", "B", "B", "low", "negative", "other", "A", "other"]', "true 1", "none hit"]

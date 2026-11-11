@@ -287,3 +287,24 @@ let type = 1
 
 def test_same_is_for_reference_types():
     assert error("let v = same(1, 1)") == "same() asks if two names refer to one struct, list or map; for Int use =="
+
+
+def test_or_patterns_count_toward_exhaustiveness():
+    checked("fn f(b: Bool) -> Int { match b { true | false => 1 } }")
+    checked("enum L { R, Y, G }\nfn f(l: L) -> Int { match l { R | Y => 1, G => 2 } }")
+    assert error("enum L { R, Y, G }\nfn f(l: L) -> Int { match l { R | Y => 1 } }") == \
+        "this match doesn't cover every case: L.G isn't handled"
+    assert error("fn f(n: Int) -> Int { match n { 1..=9 => 1, 10 => 2 } }") == \
+        "this match doesn't cover every case: another Int isn't handled"
+
+
+@pytest.mark.parametrize("text, message", [
+    ("fn f(n: Int) -> Int { match n { 1 | x => 1 } }", "patterns joined with | can't bind names yet"),
+    ("fn f(s: Str) -> Int { match s { 1..=3 => 1, _ => 2 } }", "range patterns match Ints, but the value is a Str"),
+])
+def test_pattern_alternative_errors(text, message):
+    assert errors(text) == [message]
+
+
+def test_empty_range_pattern_warns():
+    assert "this range is empty, so the arm never matches" in warnings("fn f(n: Int) -> Int { match n { 5..5 => 1, _ => 2 } }")

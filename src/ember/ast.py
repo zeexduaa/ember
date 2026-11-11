@@ -196,6 +196,21 @@ class LitPat(Pattern):
 
 
 @dataclass
+class RangePat(Pattern):
+    low: int
+    high: int
+    inclusive: bool
+
+    def __post_init__(self) -> None:
+        self.nullable = False       # set by the checker: the value might be nil
+
+
+@dataclass
+class OrPat(Pattern):
+    options: list[Pattern]
+
+
+@dataclass
 class VariantPat(Pattern):
     enum: str | None                            # "Shape" in Shape.Circle(r), else None
     variant: str

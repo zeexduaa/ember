@@ -1207,7 +1207,8 @@ class Checker:
                     t = self.check_expr(arm.body, expected or result)
                     result = t if result is None else self.join(result, t, arm.body.span)
             except CheckError:
-                pass
+                if result is None and not statement:
+                    result = TypeVar()   # the error is reported; don't add a confusing "found Nil" after it
             finally:
                 self.scope = saved
             if arm.guard is None:
@@ -1226,6 +1227,21 @@ class Checker:
     def check_pattern(self, pat: A.Pattern, t: Type, narrow: bool = False) -> None:
         t = prune(t)
         if isinstance(pat, A.WildcardPat):
+            return
+        if isinstance(pat, A.OrPat):
+            for option in pat.options:
+                if binds_names(option):
+                    raise self.fail("patterns joined with | can't bind names yet", option.span,
+                                    notes=["use _ in the alternatives, or give each one its own arm"])
+                self.check_pattern(option, t, narrow)
+            return
+        if isinstance(pat, A.RangePat):
+            target = t.inner if isinstance(t, OptionT) else t
+            pat.nullable = isinstance(t, OptionT)
+            if target != INT:
+                raise self.fail(f"range patterns match Ints, but the value is {an(t)}", pat.span)
+            if pat.high < pat.low or (pat.high == pat.low and not pat.inclusive):
+                self.warn("this range is empty, so the arm never matches", pat.span)
             return
         if isinstance(pat, A.BindPat):
             bound = t.inner if narrow and isinstance(t, OptionT) else t
@@ -1282,12 +1298,36 @@ def an(t: Type) -> str:
 
 
 def irrefutable(pat: A.Pattern) -> bool:
+    if isinstance(pat, A.OrPat):
+        return any(irrefutable(p) for p in pat.options)
     return isinstance(pat, (A.WildcardPat, A.BindPat))
+
+
+def binds_names(pat: A.Pattern) -> bool:
+    if isinstance(pat, A.BindPat):
+        return True
+    if isinstance(pat, A.OrPat):
+        return any(binds_names(p) for p in pat.options)
+    if isinstance(pat, A.VariantPat):
+        return any(binds_names(p) for p in pat.args or [])
+    return False
+
+
+def expand_or(rows: list[list[A.Pattern]]) -> list[list[A.Pattern]]:
+    """A row starting with a | b becomes a row for a and a row for b."""
+    out: list[list[A.Pattern]] = []
+    for row in rows:
+        if row and isinstance(row[0], A.OrPat):
+            out.extend(expand_or([[option] + row[1:] for option in row[0].options]))
+        else:
+            out.append(row)
+    return out
 
 
 def missing_cases(types: list[Type], rows: list[list[A.Pattern]]) -> list[str] | None:
     """Exhaustiveness: None if the rows of patterns cover every value of ``types``,
     otherwise an example of an uncovered value (one string per column)."""
+    rows = expand_or(rows)
     if not types:
         return None if rows else []
     if not rows:
@@ -1342,7 +1382,7 @@ def missing_cases(types: list[Type], rows: list[list[A.Pattern]]) -> list[str] |
     found = missing_cases(rest, default)
     if found is not None:
         # "_" when nothing looks at this value; "another Int" when some literals do.
-        some_literals = any(isinstance(row[0], A.LitPat) for row in rows)
+        some_literals = any(isinstance(row[0], (A.LitPat, A.RangePat)) for row in rows)
         shown = f"another {first}" if some_literals and first in (INT, STR, FLOAT) else "_"
         return [shown] + found
     return None

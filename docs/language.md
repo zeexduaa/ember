@@ -272,6 +272,8 @@ Patterns:
 | `_` | anything |
 | `name` (lowercase) | anything, and names it |
 | `42`, `"text"`, `true`, `nil`, `-1` | that value |
+| `1..=9`, `0..10` | an Int in the range (`..=` includes the end, `..` doesn't) |
+| `"y" \| "yes"`, `Red \| Yellow` | any of the alternatives *(they can't bind names yet)* |
 | `Circle(r)`, `Shape.Circle(r)` | that variant; the parts are patterns too, so `Add(Num(0), b)` works |
 | `Empty` | a variant without fields |
 

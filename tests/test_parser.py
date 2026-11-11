@@ -147,3 +147,8 @@ def test_several_errors_are_reported():
 ])
 def test_error_messages(text, message):
     assert errors_of(parse, text)[0] == message
+
+
+def test_pipes_outside_patterns_suggest_or():
+    assert errors_of(parse, "let a = x || y") == ["'||' isn't an operator in ember; use 'or'"]
+    assert errors_of(parse, "let a = x | y") == ["'|' isn't an operator in ember; use 'or'"]

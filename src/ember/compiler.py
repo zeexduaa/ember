@@ -681,6 +681,33 @@ class Compiler:
             fc.emit(Op.EQ)
             fails.append(fc.emit_jump(Op.JUMP_IF_FALSE))
             return
+        if isinstance(pat, A.RangePat):
+            if pat.nullable:                       # nil isn't in any range (and can't be compared)
+                fc.emit(Op.GET_LOCAL, slot)
+                fails.append(fc.emit_jump(Op.JUMP_IF_NIL))
+            fc.emit(Op.GET_LOCAL, slot)
+            fc.emit(Op.CONST, fc.constant(pat.low))
+            fc.emit(Op.GE)
+            fails.append(fc.emit_jump(Op.JUMP_IF_FALSE))
+            fc.emit(Op.GET_LOCAL, slot)
+            fc.emit(Op.CONST, fc.constant(pat.high))
+            fc.emit(Op.LE if pat.inclusive else Op.LT)
+            fails.append(fc.emit_jump(Op.JUMP_IF_FALSE))
+            return
+        if isinstance(pat, A.OrPat):
+            matched: list[int] = []
+            for i, option in enumerate(pat.options):
+                if i == len(pat.options) - 1:
+                    self.pattern(option, slot, fails)        # the last one fails for real
+                    break
+                option_fails: list[int] = []
+                self.pattern(option, slot, option_fails)
+                matched.append(fc.emit_jump(Op.JUMP))
+                for f in option_fails:
+                    fc.patch(f)                              # try the next alternative
+            for m in matched:
+                fc.patch(m)
+            return
         assert isinstance(pat, A.VariantPat) and pat.resolved is not None
         _enum, index = pat.resolved
         fc.emit(Op.GET_LOCAL, slot)
