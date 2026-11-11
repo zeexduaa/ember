@@ -1,0 +1,5 @@
+deposit 50: ok, balance is 150
+withdraw 500: refused: 350 short
+withdraw -1: refused: withdrawals must be positive
+withdraw 120: ok, balance is 30
+Ada ends with 30
