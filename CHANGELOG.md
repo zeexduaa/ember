@@ -13,3 +13,14 @@ The first version, so everything is new:
 - Modules with `pub` visibility and a standard library (`math`, `text`) written in ember.
 - `ember run`, `check`, `dis`, `eval` and a REPL.
 - Nine example programs, run in CI against their expected output.
+
+### Fixed before release
+
+- Printing or comparing a struct that contains itself crashed; cycles now print as `...` and compare correctly.
+- Recursion through callbacks (`map`, `filter`, `sort_by`...) stopped at about 150 levels; it now goes as deep as ember's own limit of 2,000 calls.
+- Ctrl+C didn't stop a running program cleanly; now it does, and in the REPL the session carries on.
+- `xs.push(nil)` on an empty list made it a list of Nil; it's now a list of optionals.
+- A lambda couldn't satisfy an optional return type from its context (`fn() { nil }` as `fn() -> Int?`).
+- `1e400` silently became `inf`; it's now a compile error.
+- The sum of an empty `List[Float]` was the Int `0`.
+- `-0.0` printed as `0.0`.
